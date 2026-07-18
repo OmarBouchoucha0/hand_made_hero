@@ -1,4 +1,4 @@
 #!/bin/sh
 
-gcc -o ./out/app main.c -lglfw -lGL
+gcc -g -O0 -o ./out/app main.c -lglfw -lGL
 ./out/app
