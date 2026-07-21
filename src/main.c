@@ -23,73 +23,75 @@ typedef int8_t i8;
 global_variable i32 WINDOW_WIDTH = 1900;
 global_variable i32 WINDOW_HEIGHT = 900;
 global_variable bool Running = true;
-global_variable void *BitmapMemory;
-global_variable i32 BitmapMemorySize;
-global_variable i32 BitmapWidth;
-global_variable i32 BitmapHeight;
-global_variable u8 BytesPerPixel = 4;
+typedef struct {
+  void *Memory;
+  i32 MemorySize;
+  i32 Width;
+  i32 Height;
+  u8 BytesPerPixel;
+} BitmapBuffer;
+global_variable BitmapBuffer GlobalBackBuffer =
+    (BitmapBuffer){.BytesPerPixel = 4};
 
-internal void RenderWeirdGradiant(i32 Xoffset, i32 Yoffset) {
-  int pitch = BitmapWidth * BytesPerPixel;
-  u8 *row = (u8 *)BitmapMemory;
+internal void RenderWeirdGradiant(BitmapBuffer Buffer, i32 Xoffset,
+                                  i32 Yoffset) {
+  int pitch = Buffer.Width * Buffer.BytesPerPixel;
+  u8 *row = (u8 *)Buffer.Memory;
 
-  u8 red = 255;
-  u8 green = 0;
-  u8 blue = 0;
-  u8 padding = 0;
-
-  for (u64 y = 0; y < BitmapHeight; ++y) {
-    u8 *pixel = (u8 *)row;
-    for (u64 x = 0; x < BitmapWidth; ++x) {
-      *pixel = (u8)(x + Xoffset);
-      ++pixel;
-
-      *pixel = (u8)(x + Xoffset);
-      ++pixel;
-
-      *pixel = (u8)(y + Yoffset);
-      ++pixel;
-
-      *pixel = 0;
-      ++pixel;
+  for (i32 y = 0; y < Buffer.Height; ++y) {
+    u32 *pixel = (u32 *)row;
+    for (i32 x = 0; x < Buffer.Width; ++x) {
+      u8 red = 0;
+      u8 green = y - Yoffset;
+      u8 blue = 0;
+      *pixel++ = (red << 16 | green << 8 | blue);
     }
     row += pitch;
   }
 }
 
-internal void ResizeDIBSection(SDL_Renderer *Renderer, SDL_Texture **Texture) {
-  if (BitmapMemory) {
-    i32 error = munmap(BitmapMemory, BitmapMemorySize);
+internal void AllocateBitmap(BitmapBuffer *Buffer) {
+  Buffer->Width = WINDOW_WIDTH;
+  Buffer->Height = WINDOW_HEIGHT;
+  if (Buffer->Memory) {
+    i32 error = munmap(Buffer->Memory, Buffer->MemorySize);
     if (error != 0) {
+      Buffer->Memory = NULL;
       return;
     }
   }
-  BitmapWidth = WINDOW_WIDTH;
-  BitmapHeight = WINDOW_HEIGHT;
+  Buffer->MemorySize = Buffer->Width * Buffer->Height * Buffer->BytesPerPixel;
 
-  BitmapMemorySize = BitmapWidth * BitmapHeight * BytesPerPixel;
-  BitmapMemory = mmap(NULL, BitmapMemorySize, PROT_READ | PROT_WRITE,
-                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (BitmapMemory == MAP_FAILED) {
+  Buffer->Memory = mmap(NULL, Buffer->MemorySize, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (Buffer->Memory == MAP_FAILED) {
     return;
   }
+}
+
+internal void ResizeDIBSection(BitmapBuffer *Buffer, SDL_Renderer *Renderer,
+                               SDL_Texture **Texture) {
+  AllocateBitmap(Buffer);
   if (*Texture) {
     SDL_DestroyTexture(*Texture);
   }
-  *Texture =
-      SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
-                        SDL_TEXTUREACCESS_STREAMING, BitmapWidth, BitmapHeight);
+  *Texture = SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
+                               SDL_TEXTUREACCESS_STREAMING, Buffer->Width,
+                               Buffer->Height);
 }
 
-internal void UpdateWindow(SDL_Renderer *renderer, SDL_Texture *Texture) {
-  SDL_UpdateTexture(Texture, NULL, BitmapMemory, BitmapWidth * BytesPerPixel);
+internal void UpdateWindow(BitmapBuffer Buffer, SDL_Renderer *renderer,
+                           SDL_Texture *Texture) {
+  SDL_UpdateTexture(Texture, NULL, Buffer.Memory,
+                    Buffer.Width * Buffer.BytesPerPixel);
   SDL_RenderClear(renderer);
   SDL_RenderCopy(renderer, Texture, NULL, NULL);
   SDL_RenderPresent(renderer);
 }
 
-internal void HandleEvent(SDL_Window *window, SDL_Renderer *Renderer,
-                          SDL_Texture *Texture, SDL_Event event) {
+internal void HandleEvent(BitmapBuffer *Buffer, SDL_Window *window,
+                          SDL_Renderer *Renderer, SDL_Texture **Texture,
+                          SDL_Event event) {
   switch (event.type) {
   case SDL_QUIT: {
     printf("[INFO] user quit\n");
@@ -103,7 +105,7 @@ internal void HandleEvent(SDL_Window *window, SDL_Renderer *Renderer,
     if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
       printf("[INFO] window resized\n");
       SDL_GetWindowSize(window, &WINDOW_WIDTH, &WINDOW_HEIGHT);
-      ResizeDIBSection(Renderer, &Texture);
+      ResizeDIBSection(Buffer, Renderer, Texture);
     }
   } break;
   }
@@ -129,14 +131,16 @@ int main() {
   }
   i32 x = 0;
   i32 y = 0;
+  AllocateBitmap(&GlobalBackBuffer);
   while (Running) {
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
-      HandleEvent(Window, Renderer, Texture, Event);
+      HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event);
     }
-    UpdateWindow(Renderer, Texture);
-    RenderWeirdGradiant(x, y);
+    UpdateWindow(GlobalBackBuffer, Renderer, Texture);
+    RenderWeirdGradiant(GlobalBackBuffer, x, y);
     ++x;
+    ++y;
   }
   return 0;
 }
