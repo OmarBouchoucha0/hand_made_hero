@@ -20,7 +20,7 @@ typedef int32_t i32;
 typedef int16_t i16;
 typedef int8_t i8;
 
-global_variable i32 WINDOW_WIDTH = 1900;
+global_variable i32 WINDOW_WIDTH = 1600;
 global_variable i32 WINDOW_HEIGHT = 900;
 global_variable bool Running = true;
 typedef struct {
@@ -41,9 +41,9 @@ internal void RenderWeirdGradiant(BitmapBuffer Buffer, i32 Xoffset,
   for (i32 y = 0; y < Buffer.Height; ++y) {
     u32 *pixel = (u32 *)row;
     for (i32 x = 0; x < Buffer.Width; ++x) {
-      u8 red = 0;
-      u8 green = y - Yoffset;
-      u8 blue = 0;
+      u8 red = x - Xoffset;
+      u8 green = 0;
+      u8 blue = y + Yoffset;
       *pixel++ = (red << 16 | green << 8 | blue);
     }
     row += pitch;
@@ -131,16 +131,28 @@ int main() {
   }
   i32 x = 0;
   i32 y = 0;
+
+  const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
   AllocateBitmap(&GlobalBackBuffer);
   while (Running) {
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event);
     }
+    if (KeyboardState[SDL_SCANCODE_RIGHT]) {
+      x += 1;
+    }
+    if (KeyboardState[SDL_SCANCODE_LEFT]) {
+      x -= 1;
+    }
+    if (KeyboardState[SDL_SCANCODE_UP]) {
+      y += 1;
+    }
+    if (KeyboardState[SDL_SCANCODE_DOWN]) {
+      y -= 1;
+    }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
     RenderWeirdGradiant(GlobalBackBuffer, x, y);
-    ++x;
-    ++y;
   }
   return 0;
 }
