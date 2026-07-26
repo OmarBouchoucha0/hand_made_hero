@@ -102,11 +102,28 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
   SDL_PauseAudioDevice(AudioDeviceID, *IsAudioPaused);
 }
 
-void AudioCallback(void *userdata, Uint8 *stream, int len) {
+void AudioCallback(void *userdata, u8 *stream, i32 len) {
   i16 *SampleOut = (i16 *)stream;
-  int SampleCount = len / sizeof(i16);
-  for (int i = 0; i < SampleCount; ++i) {
-    SampleOut[i] = (rand() % 6000) - 3000;
+  i32 SampleCount = len / sizeof(i16);
+  i32 high = 3000;
+  i32 low = -3000;
+  i32 right = 0;
+  i32 left = 0;
+
+  AudioState *State = (AudioState *)userdata;
+  i32 HalfPeriod = (State->SamplesPerSecond / State->ToneHz) / 2;
+  local_persist i32 SampleIndex = 0;
+  for (i32 i = 0; i < SampleCount; i += 2) {
+    if ((SampleIndex / HalfPeriod) % 2) {
+      left = high;
+      right = high;
+    } else {
+      left = low;
+      right = low;
+    }
+    *SampleOut++ = left;
+    *SampleOut++ = right;
+    ++SampleIndex;
   }
 }
 
@@ -170,10 +187,10 @@ int main() {
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
 
-  AudioState AudioState = {.ToneHz = 256.0f, .SamplesPerSecond = 48000};
+  AudioState AudioState = {.ToneHz = 100.0f, .SamplesPerSecond = 48000};
   const SDL_AudioSpec AudioDesired = {
       .freq = 48000,
-      .format = AUDIO_S16LSB,
+      .format = AUDIO_S16,
       .channels = 2,
       .samples = 4096,
       .callback = AudioCallback,
