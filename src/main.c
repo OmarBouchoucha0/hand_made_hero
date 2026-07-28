@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -6,6 +7,7 @@
 #define global_variable static
 #define local_persist static
 #define internal static
+#define PI 3.14159265358979323846f
 
 typedef float f32;
 typedef double f64;
@@ -40,6 +42,8 @@ typedef struct {
   i32 SamplesPerSecond;
 } AudioState;
 
+//------------------------Drawing--------------------------------------------
+
 internal void RenderBackBuffer(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
   int pitch = Buffer.Width * Buffer.BytesPerPixel;
   u8 *row = (u8 *)Buffer.Memory;
@@ -56,7 +60,6 @@ internal void RenderBackBuffer(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
   }
 }
 
-//------------------------Drawing--------------------------------------------
 internal void AllocateBitmap(BitmapBuffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
   Buffer->Height = WINDOW_HEIGHT;
@@ -105,22 +108,17 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
 void AudioCallback(void *userdata, u8 *stream, i32 len) {
   i16 *SampleOut = (i16 *)stream;
   i32 SampleCount = len / sizeof(i16);
-  i32 high = 3000;
-  i32 low = -3000;
   i32 right = 0;
   i32 left = 0;
-
   AudioState *State = (AudioState *)userdata;
-  i32 HalfPeriod = (State->SamplesPerSecond / State->ToneHz) / 2;
+  i32 Amp = 3000;
+  f32 Angle = 0;
   local_persist i32 SampleIndex = 0;
   for (i32 i = 0; i < SampleCount; i += 2) {
-    if ((SampleIndex / HalfPeriod) % 2) {
-      left = high;
-      right = high;
-    } else {
-      left = low;
-      right = low;
-    }
+    Angle = 2.0f * (f32)PI * State->ToneHz * SampleIndex /
+            (f32)State->SamplesPerSecond;
+    left = (i16)(Amp * sinf(Angle));
+    right = (i16)(Amp * sinf(Angle));
     *SampleOut++ = left;
     *SampleOut++ = right;
     ++SampleIndex;
@@ -214,6 +212,7 @@ int main() {
 
   AllocateBitmap(&GlobalBackBuffer);
   while (Running) {
+    u64 StartCounter = SDL_GetPerformanceCounter();
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
@@ -222,6 +221,11 @@ int main() {
     Movement(KeyboardState, &x, &y);
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
     RenderBackBuffer(GlobalBackBuffer, x, y);
+    u64 EndCounter = SDL_GetPerformanceCounter();
+    u64 Frequency = SDL_GetPerformanceFrequency();
+    f64 ElapsedSeconds = (f64)(EndCounter - StartCounter) / (f64)Frequency;
+    f64 fps = 1.0 / ElapsedSeconds;
+    printf("FPS: %f \n", fps);
   }
   return 0;
 }
