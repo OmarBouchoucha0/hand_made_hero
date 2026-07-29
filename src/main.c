@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <x86intrin.h>
 
 #define global_variable static
 #define local_persist static
@@ -24,41 +25,16 @@ typedef int8_t i8;
 
 typedef i32 b32;
 
+#include "handmade.cpp"
+
 global_variable i32 WINDOW_WIDTH = 1600;
 global_variable i32 WINDOW_HEIGHT = 900;
 global_variable b32 Running = true;
-typedef struct {
-  void *Memory;
-  i32 MemorySize;
-  i32 Width;
-  i32 Height;
-  u8 BytesPerPixel;
-} BitmapBuffer;
-global_variable BitmapBuffer GlobalBackBuffer =
-    (BitmapBuffer){.BytesPerPixel = 4};
 typedef struct {
   f32 ToneHz;
   f32 tSine;
   i32 SamplesPerSecond;
 } AudioState;
-
-//------------------------Drawing--------------------------------------------
-
-internal void RenderBackBuffer(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
-  int pitch = Buffer.Width * Buffer.BytesPerPixel;
-  u8 *row = (u8 *)Buffer.Memory;
-
-  for (i32 y = 0; y < Buffer.Height; ++y) {
-    u32 *pixel = (u32 *)row;
-    for (i32 x = 0; x < Buffer.Width; ++x) {
-      u8 red = x - Xoffset;
-      u8 green = 0;
-      u8 blue = y + Yoffset;
-      *pixel++ = (red << 16 | green << 8 | blue);
-    }
-    row += pitch;
-  }
-}
 
 internal void AllocateBitmap(BitmapBuffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
@@ -210,9 +186,11 @@ int main() {
   i32 x = 0;
   i32 y = 0;
 
+  BitmapBuffer GlobalBackBuffer = (BitmapBuffer){.BytesPerPixel = 4};
   AllocateBitmap(&GlobalBackBuffer);
   while (Running) {
     u64 StartCounter = SDL_GetPerformanceCounter();
+    u64 StartCycle = __rdtsc();
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
@@ -220,12 +198,15 @@ int main() {
     }
     Movement(KeyboardState, &x, &y);
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
-    RenderBackBuffer(GlobalBackBuffer, x, y);
+    Render(GlobalBackBuffer, x, y);
+    u64 EndCycle = __rdtsc();
     u64 EndCounter = SDL_GetPerformanceCounter();
     u64 Frequency = SDL_GetPerformanceFrequency();
     f64 ElapsedSeconds = (f64)(EndCounter - StartCounter) / (f64)Frequency;
     f64 fps = 1.0 / ElapsedSeconds;
-    printf("FPS: %f \n", fps);
+    u64 TotalCyclesPerFrame = EndCycle - StartCycle;
+    printf("FPS: %f MCycles per frame: %lu \n", fps,
+           TotalCyclesPerFrame / (1000 * 1000));
   }
   return 0;
 }
