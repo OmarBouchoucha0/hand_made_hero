@@ -76,11 +76,14 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
   SDL_PauseAudioDevice(AudioDeviceID, *IsAudioPaused);
 }
 
-void AudioCallback(void *userdata, u8 *stream, i32 len) {
+// NOTE: user data is empty for now, it is handeled in the platform
+// independent layer
+void AudioCallback(__attribute__((unused)) void *userdata, u8 *stream,
+                   i32 len) {
 
-  AudioState *State = (AudioState *)userdata;
-  State->SampleOut = (i16 *)stream;
-  State->SampleCount = len / sizeof(i16);
+  AudioState State = {};
+  State.SampleOut = (i16 *)stream;
+  State.SampleCount = len / sizeof(i16);
   GameSoundOutput(State);
 }
 
@@ -144,13 +147,12 @@ int main() {
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
 
-  AudioState State = {.SamplesPerSecond = 48000, .ToneHz = 100.0f};
   const SDL_AudioSpec AudioDesired = {.freq = 48000,
                                       .format = AUDIO_S16,
                                       .channels = 2,
                                       .samples = 4096,
                                       .callback = AudioCallback,
-                                      .userdata = &State};
+                                      .userdata = NULL};
   SDL_AudioSpec AudioObtained;
   const char *Device = SDL_GetAudioDeviceName(1, 0);
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
@@ -163,9 +165,6 @@ int main() {
 
   const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
   b32 IsAudioPaused = true;
-
-  i32 x = 0;
-  i32 y = 0;
 
   BitmapBuffer GlobalBackBuffer = (BitmapBuffer){.BytesPerPixel = 4};
   AllocateBitmap(&GlobalBackBuffer);
@@ -180,9 +179,8 @@ int main() {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
                   AudioDeviceID, &IsAudioPaused);
     }
-    Movement(KeyboardState, &x, &y);
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
-    GameRender(GlobalBackBuffer, x, y);
+    GameUpdate(GlobalBackBuffer, KeyboardState);
 
     //--------------------------the end of a frame----------------
     u64 EndCycle = __rdtsc();
