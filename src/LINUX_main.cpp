@@ -4,26 +4,6 @@
 #include <sys/mman.h>
 #include <x86intrin.h>
 
-#define global_variable static
-#define local_persist static
-#define internal static
-#define PI 3.14159265358979323846f
-
-typedef float f32;
-typedef double f64;
-
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint8_t u8;
-
-typedef int64_t i64;
-typedef int32_t i32;
-typedef int16_t i16;
-typedef int8_t i8;
-
-typedef i32 b32;
-
 #include "handmade.cpp"
 #include <SDL2/SDL.h>
 
@@ -76,15 +56,12 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
   SDL_PauseAudioDevice(AudioDeviceID, *IsAudioPaused);
 }
 
-// NOTE: user data is empty for now, it is handeled in the platform
-// independent layer
-void AudioCallback(__attribute__((unused)) void *userdata, u8 *stream,
-                   i32 len) {
-
-  AudioState State = {};
-  State.SampleOut = (i16 *)stream;
-  State.SampleCount = len / sizeof(i16);
-  GameSoundOutput(State);
+void AudioCallback(void *userdata, u8 *stream, i32 len) {
+  GameState *GState = (GameState *)(((GameMemory *)userdata)->PermanentStorage);
+  AudioState AState = {};
+  AState.SampleOut = (i16 *)stream;
+  AState.SampleCount = len / sizeof(i16);
+  GameSoundOutput(GState, AState);
 }
 
 //------------------------Event--------------------------------------------
@@ -117,25 +94,24 @@ internal void HandleEvent(BitmapBuffer *Buffer, SDL_Window *window,
   }
 }
 
-//------------------------Movment--------------------------------------------
-void Movement(const u8 *KeyboardState, i32 *x, i32 *y) {
-  if (KeyboardState[SDL_SCANCODE_RIGHT] || KeyboardState[SDL_SCANCODE_D]) {
-    *x += 1;
-  }
-  if (KeyboardState[SDL_SCANCODE_LEFT] || KeyboardState[SDL_SCANCODE_A]) {
-    *x -= 1;
-  }
-  if (KeyboardState[SDL_SCANCODE_UP] || KeyboardState[SDL_SCANCODE_W]) {
-    *y += 1;
-  }
-  if (KeyboardState[SDL_SCANCODE_DOWN] || KeyboardState[SDL_SCANCODE_S]) {
-    *y -= 1;
-  }
-}
-
 int main() {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
     fprintf(stderr, "failed to init SDL\n");
+    return 1;
+  }
+
+  GameMemory Memory = {};
+  Memory.PermanentStorageSize = Megabytes(64);
+  Memory.PermanentStorage =
+      mmap(NULL, Memory.PermanentStorageSize, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  Memory.TransiantStorageSize = Gigabytes(4);
+  Memory.TransiantStorage =
+      mmap(NULL, Memory.TransiantStorageSize, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (Memory.PermanentStorage == MAP_FAILED ||
+      Memory.TransiantStorage == MAP_FAILED) {
+    fprintf(stderr, "[ERR] Failed initilization: Memory Allocation\n");
     return 1;
   }
 
@@ -147,16 +123,18 @@ int main() {
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
 
-  const SDL_AudioSpec AudioDesired = {.freq = 48000,
-                                      .format = AUDIO_S16,
-                                      .channels = 2,
-                                      .samples = 4096,
-                                      .callback = AudioCallback,
-                                      .userdata = NULL};
+  // TODO: extract these params to the platform layer
+  SDL_AudioSpec AudioDesired = {};
+  AudioDesired.freq = 48000;
+  AudioDesired.format = AUDIO_S16;
+  AudioDesired.channels = 2;
+  AudioDesired.samples = Kilobytes(4);
+  AudioDesired.callback = AudioCallback;
+  AudioDesired.userdata = (void *)&Memory;
+
   SDL_AudioSpec AudioObtained;
-  const char *Device = SDL_GetAudioDeviceName(1, 0);
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
-      Device, 0, &AudioDesired, &AudioObtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+      NULL, 0, &AudioDesired, &AudioObtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
   if (Window == NULL || Renderer == NULL || AudioDeviceID == 0) {
     fprintf(stderr, "[ERR] Failed initilization: %s\n", SDL_GetError());
@@ -166,7 +144,8 @@ int main() {
   const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
   b32 IsAudioPaused = true;
 
-  BitmapBuffer GlobalBackBuffer = (BitmapBuffer){.BytesPerPixel = 4};
+  BitmapBuffer GlobalBackBuffer = {};
+  GlobalBackBuffer.BytesPerPixel = 4;
   AllocateBitmap(&GlobalBackBuffer);
 
   while (Running) {
@@ -180,7 +159,7 @@ int main() {
                   AudioDeviceID, &IsAudioPaused);
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
-    GameUpdate(GlobalBackBuffer, KeyboardState);
+    GameUpdate(&Memory, GlobalBackBuffer, KeyboardState);
 
     //--------------------------the end of a frame----------------
     u64 EndCycle = __rdtsc();
