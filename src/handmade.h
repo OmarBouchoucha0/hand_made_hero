@@ -9,5 +9,15 @@ typedef struct {
   u8 BytesPerPixel;
 } BitmapBuffer;
 
-internal void Render(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset);
+//  TODO: add sampleoffset later on
+typedef struct {
+  i16 *SampleOut;
+  i32 SampleCount;
+  i32 SamplesPerSecond;
+  f32 ToneHz;
+} AudioState;
+
+internal void GameRender(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset);
+internal void GameSoundOutput(AudioState *state);
+
 #endif

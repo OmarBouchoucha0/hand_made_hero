@@ -1,6 +1,6 @@
 #include "handmade.h"
 
-internal void Render(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
+internal void GameRender(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
   int pitch = Buffer.Width * Buffer.BytesPerPixel;
   u8 *row = (u8 *)Buffer.Memory;
 
@@ -13,5 +13,22 @@ internal void Render(BitmapBuffer Buffer, i32 Xoffset, i32 Yoffset) {
       *pixel++ = (red << 16 | green << 8 | blue);
     }
     row += pitch;
+  }
+}
+
+void GameSoundOutput(AudioState *State) {
+  local_persist i32 SampleIndex = 0;
+  i32 right = 0;
+  i32 left = 0;
+  i32 Amp = 6000;
+  f32 Angle = 0;
+  for (i32 i = 0; i < State->SampleCount; i += 2) {
+    Angle = 2.0f * (f32)PI * State->ToneHz * SampleIndex /
+            (f32)State->SamplesPerSecond;
+    left = (i16)(Amp * sinf(Angle));
+    right = (i16)(Amp * sinf(Angle));
+    *State->SampleOut++ = left;
+    *State->SampleOut++ = right;
+    ++SampleIndex;
   }
 }

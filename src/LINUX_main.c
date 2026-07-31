@@ -1,4 +1,3 @@
-#include <SDL2/SDL.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,15 +25,11 @@ typedef int8_t i8;
 typedef i32 b32;
 
 #include "handmade.cpp"
+#include <SDL2/SDL.h>
 
-global_variable i32 WINDOW_WIDTH = 1600;
-global_variable i32 WINDOW_HEIGHT = 900;
+global_variable i32 WINDOW_WIDTH = 99999;
+global_variable i32 WINDOW_HEIGHT = 99999;
 global_variable b32 Running = true;
-typedef struct {
-  f32 ToneHz;
-  f32 tSine;
-  i32 SamplesPerSecond;
-} AudioState;
 
 internal void AllocateBitmap(BitmapBuffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
@@ -82,23 +77,11 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
 }
 
 void AudioCallback(void *userdata, u8 *stream, i32 len) {
-  i16 *SampleOut = (i16 *)stream;
-  i32 SampleCount = len / sizeof(i16);
-  i32 right = 0;
-  i32 left = 0;
+
   AudioState *State = (AudioState *)userdata;
-  i32 Amp = 3000;
-  f32 Angle = 0;
-  local_persist i32 SampleIndex = 0;
-  for (i32 i = 0; i < SampleCount; i += 2) {
-    Angle = 2.0f * (f32)PI * State->ToneHz * SampleIndex /
-            (f32)State->SamplesPerSecond;
-    left = (i16)(Amp * sinf(Angle));
-    right = (i16)(Amp * sinf(Angle));
-    *SampleOut++ = left;
-    *SampleOut++ = right;
-    ++SampleIndex;
-  }
+  State->SampleOut = (i16 *)stream;
+  State->SampleCount = len / sizeof(i16);
+  GameSoundOutput(State);
 }
 
 //------------------------Event--------------------------------------------
@@ -161,15 +144,13 @@ int main() {
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
 
-  AudioState AudioState = {.ToneHz = 100.0f, .SamplesPerSecond = 48000};
-  const SDL_AudioSpec AudioDesired = {
-      .freq = 48000,
-      .format = AUDIO_S16,
-      .channels = 2,
-      .samples = 4096,
-      .callback = AudioCallback,
-      .userdata = &AudioState,
-  };
+  AudioState State = {.SamplesPerSecond = 48000, .ToneHz = 100.0f};
+  const SDL_AudioSpec AudioDesired = {.freq = 48000,
+                                      .format = AUDIO_S16,
+                                      .channels = 2,
+                                      .samples = 4096,
+                                      .callback = AudioCallback,
+                                      .userdata = &State};
   SDL_AudioSpec AudioObtained;
   const char *Device = SDL_GetAudioDeviceName(1, 0);
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
@@ -188,9 +169,12 @@ int main() {
 
   BitmapBuffer GlobalBackBuffer = (BitmapBuffer){.BytesPerPixel = 4};
   AllocateBitmap(&GlobalBackBuffer);
+
   while (Running) {
     u64 StartCounter = SDL_GetPerformanceCounter();
     u64 StartCycle = __rdtsc();
+    //--------------------------the start of a frame--------------
+
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
@@ -198,7 +182,9 @@ int main() {
     }
     Movement(KeyboardState, &x, &y);
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
-    Render(GlobalBackBuffer, x, y);
+    GameRender(GlobalBackBuffer, x, y);
+
+    //--------------------------the end of a frame----------------
     u64 EndCycle = __rdtsc();
     u64 EndCounter = SDL_GetPerformanceCounter();
     u64 Frequency = SDL_GetPerformanceFrequency();
