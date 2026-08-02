@@ -1,3 +1,5 @@
+#if defined(__linux__)
+#include <link.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,10 +9,25 @@
 #include "handmade.cpp"
 #include <SDL2/SDL.h>
 
-global_variable i32 WINDOW_WIDTH = 99999;
-global_variable i32 WINDOW_HEIGHT = 99999;
+global_variable i32 WINDOW_WIDTH = 1800;
+global_variable i32 WINDOW_HEIGHT = 900;
 global_variable b32 Running = true;
 
+#if !HANDMADE_INTERNAL
+internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
+                                 void *data) {
+  u64 *base = (u64 *)data;
+
+  if (info->dlpi_name == NULL || info->dlpi_name[0] == '\0') {
+    *base = (u64)info->dlpi_addr;
+    return 1;
+  }
+  return 0;
+}
+#endif
+
+// TODO: allocate soemthing for the biggest screen so we dont have to reallocate
+// when we resize
 internal void AllocateBitmap(BitmapBuffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
   Buffer->Height = WINDOW_HEIGHT;
@@ -100,17 +117,20 @@ int main() {
     return 1;
   }
 
+  void *BaseAddress = (void *)Terabytes(2);
+#if !HANDMADE_INTERNAL
+  *BaseAddress = 0;
+#endif
+
   GameMemory Memory = {};
   Memory.PermanentStorageSize = Megabytes(64);
-  Memory.PermanentStorage =
-      mmap(NULL, Memory.PermanentStorageSize, PROT_READ | PROT_WRITE,
-           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   Memory.TransiantStorageSize = Gigabytes(4);
+  u64 TotalSize = Memory.PermanentStorageSize + Memory.TransiantStorageSize;
+  Memory.PermanentStorage = mmap(BaseAddress, TotalSize, PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   Memory.TransiantStorage =
-      mmap(NULL, Memory.TransiantStorageSize, PROT_READ | PROT_WRITE,
-           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (Memory.PermanentStorage == MAP_FAILED ||
-      Memory.TransiantStorage == MAP_FAILED) {
+      (u8 *)Memory.PermanentStorage + Memory.PermanentStorageSize;
+  if (Memory.PermanentStorage == MAP_FAILED) {
     fprintf(stderr, "[ERR] Failed initilization: Memory Allocation\n");
     return 1;
   }
@@ -173,3 +193,4 @@ int main() {
   }
   return 0;
 }
+#endif

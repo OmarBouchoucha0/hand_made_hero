@@ -33,6 +33,7 @@ typedef i32 b32;
 #define Kilobytes(x) ((u64)(x) * 1024)
 #define Megabytes(x) ((u64)(x) * 1024 * 1024)
 #define Gigabytes(x) ((u64)(x) * 1024 * 1024 * 1024)
+#define Terabytes(x) ((u64)(x) * 1024 * 1024 * 1024 * 1024)
 
 typedef enum Scancode {
   // arrow keys
