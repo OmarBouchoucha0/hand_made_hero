@@ -53,6 +53,12 @@ internal void GameUpdate(GameMemory *Memory, BitmapBuffer Buffer,
   Assert(sizeof(GameState) <= Memory->PermanentStorageSize);
   GameState *State = (GameState *)Memory->PermanentStorage;
   if (!Memory->IsInitialised) {
+    const char *file = __FILE__;
+    DEBUGFileSlice bitmap = DEBUGPlatformReadEntireFile(file);
+    if (bitmap.Memory) {
+      // DEBUGPlatformWriteEntireFile("test.cpp", bitmap);
+      DEBUGPlatformFreeEntireFile(bitmap.Memory);
+    }
     State->XOffset = 0;
     State->YOffset = 0;
 

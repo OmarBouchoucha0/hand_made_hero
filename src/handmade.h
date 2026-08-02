@@ -10,10 +10,17 @@
 #else
 #define Assert(Expression)
 #endif
+
 #define global_variable static
 #define local_persist static
 #define internal static
 #define PI 3.14159265358979323846f
+#define AUDIO_S16 0x8010 /**< Signed 16-bit samples */
+
+#define AUDIO_FREQ 48000
+#define AUDIO_FORMAT AUDIO_S16
+#define AUDIO_CHANNELS 2
+#define AUDIO_SAMPLES Kilobytes(4)
 
 typedef float f32;
 typedef double f64;
@@ -34,6 +41,10 @@ typedef i32 b32;
 #define Megabytes(x) ((u64)(x) * 1024 * 1024)
 #define Gigabytes(x) ((u64)(x) * 1024 * 1024 * 1024)
 #define Terabytes(x) ((u64)(x) * 1024 * 1024 * 1024 * 1024)
+
+global_variable i32 WINDOW_WIDTH = 0;
+global_variable i32 WINDOW_HEIGHT = 0;
+global_variable b32 Running = true;
 
 typedef enum Scancode {
   // arrow keys
@@ -91,5 +102,18 @@ internal void GameSoundOutput(GameState *GameState, AudioState AudioState);
 internal void GameMovement(GameState *GameState, const u8 *KeyboardState);
 internal void GameUpdate(GameMemory *Memory, BitmapBuffer Buffer,
                          const u8 *KeyboardState);
+#if HANDMADE_INTERNAL
+typedef struct {
+  void *Memory;
+  u32 MemorySize;
+} DEBUGFileSlice;
+
+// NOTE: return NULL on failure
+internal DEBUGFileSlice DEBUGPlatformReadEntireFile(const char *FileName);
+internal void DEBUGPlatformFreeEntireFile(void *Memory);
+// NOTE: u64 only supports up to 4gb files
+internal void DEBUGPlatformWriteEntireFile(const char *FileName,
+                                           DEBUGFileSlice File);
+#endif
 
 #endif

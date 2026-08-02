@@ -9,10 +9,6 @@
 #include "handmade.cpp"
 #include <SDL2/SDL.h>
 
-global_variable i32 WINDOW_WIDTH = 1800;
-global_variable i32 WINDOW_HEIGHT = 900;
-global_variable b32 Running = true;
-
 #if !HANDMADE_INTERNAL
 internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
                                  void *data) {
@@ -26,20 +22,38 @@ internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
 }
 #endif
 
-// TODO: allocate soemthing for the biggest screen so we dont have to reallocate
-// when we resize
+// TODO: i need to use a diffrent function that thois wrapper if i want to do
+// the allocation myself
+internal DEBUGFileSlice DEBUGPlatformReadEntireFile(const char *FileName) {
+  // NOTE: The data is allocated with a zero byte at the end (null terminated)
+  // for convenience.(from the sdl docs)
+  DEBUGFileSlice File = {};
+  size_t Size;
+  File.Memory = SDL_LoadFile(FileName, &Size);
+  File.MemorySize = Size;
+  return File;
+}
+internal void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
+internal void DEBUGPlatformWriteEntireFile(const char *FileName,
+                                           DEBUGFileSlice File) {
+  SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
+  // TODO: handle the failure case correctly this just logs for the moment
+  if (!Handle) {
+    fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
+            SDL_GetError());
+    return;
+  }
+  SDL_RWwrite(Handle, File.Memory, sizeof(u8), File.MemorySize);
+  SDL_RWclose(Handle);
+}
+
+// internal void AllocateBitmap(GameMemory *Memory, BitmapBuffer *Buffer) {
 internal void AllocateBitmap(BitmapBuffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
   Buffer->Height = WINDOW_HEIGHT;
-  if (Buffer->Memory) {
-    i32 error = munmap(Buffer->Memory, Buffer->MemorySize);
-    if (error != 0) {
-      Buffer->Memory = NULL;
-      return;
-    }
-  }
   Buffer->MemorySize = Buffer->Width * Buffer->Height * Buffer->BytesPerPixel;
 
+  // TODO: use the Memory of the program instead of a new alloc
   Buffer->Memory = mmap(NULL, Buffer->MemorySize, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (Buffer->Memory == MAP_FAILED) {
@@ -143,12 +157,11 @@ int main() {
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
 
-  // TODO: extract these params to the platform layer
   SDL_AudioSpec AudioDesired = {};
-  AudioDesired.freq = 48000;
-  AudioDesired.format = AUDIO_S16;
-  AudioDesired.channels = 2;
-  AudioDesired.samples = Kilobytes(4);
+  AudioDesired.freq = AUDIO_FREQ;
+  AudioDesired.format = AUDIO_FORMAT;
+  AudioDesired.channels = AUDIO_CHANNELS;
+  AudioDesired.samples = AUDIO_SAMPLES;
   AudioDesired.callback = AudioCallback;
   AudioDesired.userdata = (void *)&Memory;
 
