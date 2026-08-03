@@ -215,11 +215,16 @@ int main() {
     f64 RealFps = 1.0 / ElapsedSeconds;
     u64 TotalCyclesPerFrame = EndCycle - StartCycle;
 
-    f32 FrameTime = (f32)(SDL_GetTicks64() - CurrentTickTime);
-    if (FrameTime < TargetMilliSecondsPerFrame) {
-      //TODO: Sleep for most of the remaining time, then spin-wait (busy-loop) for the last ~1-2ms for precision:
-      u32 Delay = (u32)(TargetMilliSecondsPerFrame - FrameTime);
+    f32 ElapsedMS =
+        ((f32)(EndCounter - StartCounter) / (f32)Frequency) * 1000.0f;
+    if (ElapsedMS < TargetMilliSecondsPerFrame) {
+      u32 Delay = (u32)(TargetMilliSecondsPerFrame - ElapsedMS + 0.5f);
       SDL_Delay(Delay);
+      while (ElapsedMS < TargetMilliSecondsPerFrame) {
+        EndCounter = SDL_GetPerformanceCounter();
+        ElapsedMS =
+            ((f32)(EndCounter - StartCounter) / (f32)Frequency) * 1000.0f;
+      }
     } else {
       // TODO: frame missed
     }
