@@ -1,12 +1,10 @@
 #if defined(__linux__)
+#include "handmade.cpp"
 #include <link.h>
-#include <math.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <x86intrin.h>
 
-#include "handmade.cpp"
 #include <SDL2/SDL.h>
 
 #if !HANDMADE_INTERNAL
@@ -24,18 +22,18 @@ internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
 
 // TODO: i need to use a diffrent function that thois wrapper if i want to do
 // the allocation myself
-internal DEBUGFileSlice DEBUGPlatformReadEntireFile(const char *FileName) {
+internal DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   // NOTE: The data is allocated with a zero byte at the end (null terminated)
   // for convenience.(from the sdl docs)
-  DEBUGFileSlice File = {};
+  DEBUG_File_Slice File = {};
   size_t Size;
   File.Memory = SDL_LoadFile(FileName, &Size);
-  File.MemorySize = Size;
+  File.MemorySize = (u32)Size;
   return File;
 }
 internal void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
 internal void DEBUGPlatformWriteEntireFile(const char *FileName,
-                                           DEBUGFileSlice File) {
+                                           DEBUG_File_Slice File) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
   // TODO: handle the failure case correctly this just logs for the moment
   if (!Handle) {
@@ -48,7 +46,7 @@ internal void DEBUGPlatformWriteEntireFile(const char *FileName,
 }
 
 // internal void AllocateBitmap(GameMemory *Memory, BitmapBuffer *Buffer) {
-internal void AllocateBitmap(BitmapBuffer *Buffer) {
+internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
   Buffer->Height = WINDOW_HEIGHT;
   Buffer->MemorySize = Buffer->Width * Buffer->Height * Buffer->BytesPerPixel;
@@ -61,7 +59,7 @@ internal void AllocateBitmap(BitmapBuffer *Buffer) {
   }
 }
 
-internal void ResizeDIBSection(BitmapBuffer *Buffer, SDL_Renderer *Renderer,
+internal void ResizeDIBSection(Bitmap_Buffer *Buffer, SDL_Renderer *Renderer,
                                SDL_Texture **Texture) {
   AllocateBitmap(Buffer);
   if (*Texture) {
@@ -72,7 +70,7 @@ internal void ResizeDIBSection(BitmapBuffer *Buffer, SDL_Renderer *Renderer,
                                Buffer->Height);
 }
 
-internal void UpdateWindow(BitmapBuffer Buffer, SDL_Renderer *renderer,
+internal void UpdateWindow(Bitmap_Buffer Buffer, SDL_Renderer *renderer,
                            SDL_Texture *Texture) {
   SDL_UpdateTexture(Texture, NULL, Buffer.Memory,
                     Buffer.Width * Buffer.BytesPerPixel);
@@ -88,15 +86,16 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
 }
 
 void AudioCallback(void *userdata, u8 *stream, i32 len) {
-  GameState *GState = (GameState *)(((GameMemory *)userdata)->PermanentStorage);
-  AudioState AState = {};
-  AState.SampleOut = (i16 *)stream;
-  AState.SampleCount = len / sizeof(i16);
-  GameSoundOutput(GState, AState);
+  Game_State *GameState =
+      (Game_State *)(((Game_Memory *)userdata)->PermanentStorage);
+  Audio_State AudioState = {};
+  AudioState.SampleOut = (i16 *)stream;
+  AudioState.SampleCount = len / sizeof(i16);
+  GameSoundOutput(GameState, AudioState);
 }
 
 //------------------------Event--------------------------------------------
-internal void HandleEvent(BitmapBuffer *Buffer, SDL_Window *window,
+internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
                           SDL_Renderer *Renderer, SDL_Texture **Texture,
                           SDL_Event event, SDL_AudioDeviceID AudioDeviceID,
                           b32 *IsAudioPaused) {
@@ -136,7 +135,7 @@ int main() {
   *BaseAddress = 0;
 #endif
 
-  GameMemory Memory = {};
+  Game_Memory Memory = {};
   Memory.PermanentStorageSize = Megabytes(64);
   Memory.TransiantStorageSize = Gigabytes(4);
   u64 TotalSize = Memory.PermanentStorageSize + Memory.TransiantStorageSize;
@@ -177,11 +176,25 @@ int main() {
   const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
   b32 IsAudioPaused = true;
 
-  BitmapBuffer GlobalBackBuffer = {};
+  Bitmap_Buffer GlobalBackBuffer = {};
   GlobalBackBuffer.BytesPerPixel = 4;
   AllocateBitmap(&GlobalBackBuffer);
 
+  SDL_DisplayMode Mode;
+  int DisplayIndex = SDL_GetWindowDisplayIndex(Window);
+  if (SDL_GetCurrentDisplayMode(DisplayIndex, &Mode)) {
+    fprintf(stderr, "[ERR] Failed to get display mode: %s\n", SDL_GetError());
+  }
+  i32 MonitorRefreshRate = (Mode.refresh_rate > 0) ? Mode.refresh_rate : 60;
+  i32 GameRefreshRate = MonitorRefreshRate / 2;
+  f32 TargetMilliSecondsPerFrame = 1000.0f / (f32)GameRefreshRate;
+  u64 PrevTickTime = SDL_GetTicks64();
+
   while (Running) {
+    u64 CurrentTickTime = SDL_GetTicks64();
+    f32 Dt = (f32)(CurrentTickTime - PrevTickTime) / 1000.0f;
+    PrevTickTime = CurrentTickTime;
+
     u64 StartCounter = SDL_GetPerformanceCounter();
     u64 StartCycle = __rdtsc();
     //--------------------------the start of a frame--------------
@@ -198,12 +211,26 @@ int main() {
     u64 EndCycle = __rdtsc();
     u64 EndCounter = SDL_GetPerformanceCounter();
     u64 Frequency = SDL_GetPerformanceFrequency();
-    f64 ElapsedSeconds = (f64)(EndCounter - StartCounter) / (f64)Frequency;
-    f64 fps = 1.0 / ElapsedSeconds;
+    f32 ElapsedSeconds = (f32)(EndCounter - StartCounter) / (f32)Frequency;
+    f64 RealFps = 1.0 / ElapsedSeconds;
     u64 TotalCyclesPerFrame = EndCycle - StartCycle;
-    printf("FPS: %f MCycles per frame: %lu \n", fps,
-           TotalCyclesPerFrame / (1000 * 1000));
+
+    f32 FrameTime = (f32)(SDL_GetTicks64() - CurrentTickTime);
+    if (FrameTime < TargetMilliSecondsPerFrame) {
+      //TODO: Sleep for most of the remaining time, then spin-wait (busy-loop) for the last ~1-2ms for precision:
+      u32 Delay = (u32)(TargetMilliSecondsPerFrame - FrameTime);
+      SDL_Delay(Delay);
+    } else {
+      // TODO: frame missed
+    }
+
+    f64 VSyncFps = 1.0f / Dt;
+    printf("REAL FPS: %f MCycles per frame: %lu FAKE FPS: %f \n", RealFps,
+           TotalCyclesPerFrame / (1000 * 1000), VSyncFps);
   }
+  // NOTE: not sure if the quit is nessecary since the os does the cleanup but
+  // its here for now
+  SDL_Quit();
   return 0;
 }
 #endif

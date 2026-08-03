@@ -1,6 +1,9 @@
 #if !defined(HANDMADE_H)
 #define HANDMADE_H
 
+#include <math.h>
+#include <stdint.h>
+
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 #if HANDMADE_SLOW
 #define Assert(Expression)                                                     \
@@ -42,11 +45,11 @@ typedef i32 b32;
 #define Gigabytes(x) ((u64)(x) * 1024 * 1024 * 1024)
 #define Terabytes(x) ((u64)(x) * 1024 * 1024 * 1024 * 1024)
 
-global_variable i32 WINDOW_WIDTH = 0;
-global_variable i32 WINDOW_HEIGHT = 0;
+global_variable i32 WINDOW_WIDTH;
+global_variable i32 WINDOW_HEIGHT;
 global_variable b32 Running = true;
 
-typedef enum Scancode {
+enum Scan_Code {
   // arrow keys
   SCANCODE_RIGHT = 79,
   SCANCODE_LEFT = 80,
@@ -61,59 +64,59 @@ typedef enum Scancode {
 
   // spacebar
   SCANCODE_SPACE = 44,
-} Scancode;
+};
 
-typedef struct {
+struct Game_Memory {
   b32 IsInitialised;
   u64 PermanentStorageSize;
   void *PermanentStorage; // NOTE: must be initilize to 0
   u64 TransiantStorageSize;
   void *TransiantStorage; // NOTE: must be initilize to 0
-} GameMemory;
+};
 
-typedef struct {
+struct Game_State {
   struct {
     i32 XOffset;
     i32 YOffset;
   };
   struct {
     i32 SamplesPerSecond;
-    f32 ToneHz;
+    i32 ToneHz;
     i32 SampleIndex;
   };
-} GameState;
+};
 
-typedef struct {
+struct Bitmap_Buffer {
   void *Memory;
-  i32 MemorySize;
+  u32 MemorySize;
   i32 Width;
   i32 Height;
   u8 BytesPerPixel;
-} BitmapBuffer;
+};
 
 //  TODO: add sampleoffset
-typedef struct {
+struct Audio_State {
   i16 *SampleOut;
   i32 SampleCount;
-} AudioState;
+};
 
-internal void GameRender(GameState *GameState, BitmapBuffer Buffer);
-internal void GameSoundOutput(GameState *GameState, AudioState AudioState);
-internal void GameMovement(GameState *GameState, const u8 *KeyboardState);
-internal void GameUpdate(GameMemory *Memory, BitmapBuffer Buffer,
+internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer);
+internal void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
+internal void GameMovement(Game_State *GameState, const u8 *KeyboardState);
+internal void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
                          const u8 *KeyboardState);
 #if HANDMADE_INTERNAL
 typedef struct {
   void *Memory;
   u32 MemorySize;
-} DEBUGFileSlice;
+} DEBUG_File_Slice;
 
 // NOTE: return NULL on failure
-internal DEBUGFileSlice DEBUGPlatformReadEntireFile(const char *FileName);
+internal DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
 internal void DEBUGPlatformFreeEntireFile(void *Memory);
 // NOTE: u64 only supports up to 4gb files
 internal void DEBUGPlatformWriteEntireFile(const char *FileName,
-                                           DEBUGFileSlice File);
+                                           DEBUG_File_Slice File);
 #endif
 
 #endif
