@@ -45,10 +45,6 @@ typedef i32 b32;
 #define Gigabytes(x) ((u64)(x) * 1024 * 1024 * 1024)
 #define Terabytes(x) ((u64)(x) * 1024 * 1024 * 1024 * 1024)
 
-global_variable i32 WINDOW_WIDTH;
-global_variable i32 WINDOW_HEIGHT;
-global_variable b32 Running = true;
-
 enum Scan_Code {
   // arrow keys
   SCANCODE_RIGHT = 79,
@@ -101,10 +97,10 @@ struct Audio_State {
 };
 
 internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer);
-internal void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
+ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
 internal void GameMovement(Game_State *GameState, const u8 *KeyboardState);
-internal void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
-                         const u8 *KeyboardState);
+extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
+                           const u8 *KeyboardState);
 #if HANDMADE_INTERNAL
 typedef struct {
   void *Memory;
@@ -112,11 +108,10 @@ typedef struct {
 } DEBUG_File_Slice;
 
 // NOTE: return NULL on failure
-internal DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
-internal void DEBUGPlatformFreeEntireFile(void *Memory);
+DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
+void DEBUGPlatformFreeEntireFile(void *Memory);
 // NOTE: u64 only supports up to 4gb files
-internal void DEBUGPlatformWriteEntireFile(const char *FileName,
-                                           DEBUG_File_Slice File);
+void DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File);
 #endif
 
 #endif

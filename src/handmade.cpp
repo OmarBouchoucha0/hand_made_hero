@@ -32,7 +32,7 @@ internal void GameMovement(Game_State *GameState, const u8 *KeyboardState) {
   }
 }
 
-void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
+extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   i16 right = 0;
   i16 left = 0;
   i32 Amp = 6000;
@@ -48,8 +48,8 @@ void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   }
 }
 
-internal void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
-                         const u8 *KeyboardState) {
+extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
+                           const u8 *KeyboardState) {
   Assert(sizeof(Game_State) <= Memory->PermanentStorageSize);
   Game_State *State = (Game_State *)Memory->PermanentStorage;
   if (!Memory->IsInitialised) {

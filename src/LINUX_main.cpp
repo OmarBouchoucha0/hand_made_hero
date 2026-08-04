@@ -1,11 +1,17 @@
 #if defined(__linux__)
-#include "handmade.cpp"
+#include "handmade.h"
+#include <dlfcn.h>
 #include <link.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <x86intrin.h>
 
 #include <SDL2/SDL.h>
+
+global_variable b32 Running = true;
+global_variable i32 WINDOW_WIDTH;
+global_variable i32 WINDOW_HEIGHT;
 
 #if !HANDMADE_INTERNAL
 internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
@@ -20,9 +26,54 @@ internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
 }
 #endif
 
+typedef void (*Game_UpdateFn)(Game_Memory *, Bitmap_Buffer, const u8 *);
+typedef void (*Game_SoundOutputFn)(Game_State *GameState,
+                                   Audio_State AudioState);
+
+struct Game_Code {
+  void *Handle;
+  Game_UpdateFn Update;
+  Game_SoundOutputFn Sound;
+  time_t LastWriteTime;
+  bool IsValid;
+};
+
+struct Game_Logic_And_State {
+  Game_Code GameCode;
+  Game_Memory Memory;
+};
+
+internal time_t GetLastWriteTime(const char *Path) {
+  struct stat FileStat;
+  if (stat(Path, &FileStat) == 0) {
+    return FileStat.st_mtime;
+  }
+  return 0;
+}
+
+internal Game_Code LoadGameCode(const char *Path) {
+  Game_Code Result = {};
+  Result.Handle = dlopen(Path, RTLD_NOW);
+  if (Result.Handle) {
+    Result.Update = (Game_UpdateFn)dlsym(Result.Handle, "GameUpdate");
+    Result.Sound = (Game_SoundOutputFn)dlsym(Result.Handle, "GameSoundOutput");
+    Result.IsValid = (Result.Update != NULL);
+  } else {
+    fprintf(stderr, "[ERR] dlopen failed: %s\n", dlerror());
+  }
+  return Result;
+}
+
+internal void UnloadGameCode(Game_Code *Game) {
+  if (Game->Handle) {
+    dlclose(Game->Handle);
+  }
+  *Game = {};
+}
+
 // TODO: i need to use a diffrent function that thois wrapper if i want to do
 // the allocation myself
-internal DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
+DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   // NOTE: The data is allocated with a zero byte at the end (null terminated)
   // for convenience.(from the sdl docs)
   DEBUG_File_Slice File = {};
@@ -31,9 +82,8 @@ internal DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   File.MemorySize = (u32)Size;
   return File;
 }
-internal void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
-internal void DEBUGPlatformWriteEntireFile(const char *FileName,
-                                           DEBUG_File_Slice File) {
+void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
+void DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
   // TODO: handle the failure case correctly this just logs for the moment
   if (!Handle) {
@@ -86,12 +136,14 @@ void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
 }
 
 void AudioCallback(void *userdata, u8 *stream, i32 len) {
+  Game_Logic_And_State *GameLogicAndState = (Game_Logic_And_State *)userdata;
   Game_State *GameState =
-      (Game_State *)(((Game_Memory *)userdata)->PermanentStorage);
+      (Game_State *)GameLogicAndState->Memory.PermanentStorage;
+  Game_Code GameCode = GameLogicAndState->GameCode;
   Audio_State AudioState = {};
   AudioState.SampleOut = (i16 *)stream;
   AudioState.SampleCount = len / sizeof(i16);
-  GameSoundOutput(GameState, AudioState);
+  GameCode.Sound(GameState, AudioState);
 }
 
 //------------------------Event--------------------------------------------
@@ -147,6 +199,8 @@ int main() {
     fprintf(stderr, "[ERR] Failed initilization: Memory Allocation\n");
     return 1;
   }
+  const char *GameLibPath = "./out/handmade.so";
+  Game_Code GameCode = LoadGameCode("GameLibPath");
 
   SDL_Window *Window = SDL_CreateWindow("handmade hero", SDL_WINDOWPOS_CENTERED,
                                         SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH,
@@ -155,6 +209,9 @@ int main() {
   SDL_Texture *Texture = SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
+  Game_Logic_And_State GameLogicAndState = {};
+  GameLogicAndState.GameCode = GameCode;
+  GameLogicAndState.Memory = Memory;
 
   SDL_AudioSpec AudioDesired = {};
   AudioDesired.freq = AUDIO_FREQ;
@@ -162,7 +219,7 @@ int main() {
   AudioDesired.channels = AUDIO_CHANNELS;
   AudioDesired.samples = AUDIO_SAMPLES;
   AudioDesired.callback = AudioCallback;
-  AudioDesired.userdata = (void *)&Memory;
+  AudioDesired.userdata = (void *)&GameLogicAndState;
 
   SDL_AudioSpec AudioObtained;
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
@@ -186,7 +243,7 @@ int main() {
     fprintf(stderr, "[ERR] Failed to get display mode: %s\n", SDL_GetError());
   }
   i32 MonitorRefreshRate = (Mode.refresh_rate > 0) ? Mode.refresh_rate : 60;
-  i32 GameRefreshRate = MonitorRefreshRate / 2;
+  i32 GameRefreshRate = MonitorRefreshRate / 1;
   f32 TargetMilliSecondsPerFrame = 1000.0f / (f32)GameRefreshRate;
   u64 PrevTickTime = SDL_GetTicks64();
 
@@ -197,7 +254,14 @@ int main() {
 
     u64 StartCounter = SDL_GetPerformanceCounter();
     u64 StartCycle = __rdtsc();
-    //--------------------------the start of a frame--------------
+
+    time_t NewWriteTime = GetLastWriteTime(GameLibPath);
+    if (NewWriteTime != GameCode.LastWriteTime) {
+      UnloadGameCode(&GameCode);
+      GameCode = LoadGameCode(GameLibPath);
+      GameCode.LastWriteTime = NewWriteTime;
+      printf("[INFO] game code reloaded\n");
+    }
 
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
@@ -205,21 +269,21 @@ int main() {
                   AudioDeviceID, &IsAudioPaused);
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
-    GameUpdate(&Memory, GlobalBackBuffer, KeyboardState);
 
-    //--------------------------the end of a frame----------------
-    u64 EndCycle = __rdtsc();
+    if (GameCode.IsValid) {
+      GameCode.Update(&Memory, GlobalBackBuffer, KeyboardState);
+    }
+
     u64 EndCounter = SDL_GetPerformanceCounter();
     u64 Frequency = SDL_GetPerformanceFrequency();
-    f32 ElapsedSeconds = (f32)(EndCounter - StartCounter) / (f32)Frequency;
-    f64 RealFps = 1.0 / ElapsedSeconds;
-    u64 TotalCyclesPerFrame = EndCycle - StartCycle;
-
     f32 ElapsedMS =
         ((f32)(EndCounter - StartCounter) / (f32)Frequency) * 1000.0f;
+    f64 RealFps = 1000.0f / ElapsedMS;
+
     if (ElapsedMS < TargetMilliSecondsPerFrame) {
-      u32 Delay = (u32)(TargetMilliSecondsPerFrame - ElapsedMS + 0.5f);
-      SDL_Delay(Delay);
+      // NOTE: we give the os time to wake up with the 1 ms delay, we still have
+      // some occasional spikes not sure why
+      SDL_Delay((u32)(TargetMilliSecondsPerFrame - ElapsedMS - 1.0f));
       while (ElapsedMS < TargetMilliSecondsPerFrame) {
         EndCounter = SDL_GetPerformanceCounter();
         ElapsedMS =
@@ -229,9 +293,15 @@ int main() {
       // TODO: frame missed
     }
 
-    f64 VSyncFps = 1.0f / Dt;
-    printf("REAL FPS: %f MCycles per frame: %lu FAKE FPS: %f \n", RealFps,
-           TotalCyclesPerFrame / (1000 * 1000), VSyncFps);
+    f64 VSyncFps = 1000.0f / ElapsedMS;
+    f32 DelayMS = ElapsedMS - TargetMilliSecondsPerFrame;
+
+    u64 EndCycle = __rdtsc();
+    u64 TotalCyclesPerFrame = EndCycle - StartCycle;
+    printf("[INFO] UNCAPPED FPS: %f VSYNC FPS: %f Delay : %f ms MCycles per "
+           "frame: "
+           "%lu  \n",
+           RealFps, VSyncFps, DelayMS, TotalCyclesPerFrame / (1000 * 1000));
   }
   // NOTE: not sure if the quit is nessecary since the os does the cleanup but
   // its here for now
