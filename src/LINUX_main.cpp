@@ -26,7 +26,8 @@ internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
 }
 #endif
 
-typedef void (*Game_UpdateFn)(Game_Memory *, Bitmap_Buffer, const u8 *);
+//--------------------------dynamic library loading---------------------
+typedef void (*Game_UpdateFn)(Game_Memory *, Bitmap_Buffer *, Game_Input *);
 typedef void (*Game_SoundOutputFn)(Game_State *GameState,
                                    Audio_State AudioState);
 
@@ -79,7 +80,8 @@ internal void UnloadGameCode(Game_Code *Game) {
   *Game = {};
 }
 
-// TODO: i need to use a diffrent function that thois wrapper if i want to do
+//-----------------------------file loading------------------------------
+// TODO: i need to use a diffrent function than this wrapper if i want to do
 // the allocation myself
 DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   // NOTE: The data is allocated with a zero byte at the end (null terminated)
@@ -88,24 +90,28 @@ DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   size_t Size;
   File.Memory = SDL_LoadFile(FileName, &Size);
   File.MemorySize = (u32)Size;
+  if (File.Memory == NULL) {
+    fprintf(stderr, "[ERR] Failed to open file\n");
+  }
   return File;
 }
-void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
+void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File) {
+  SDL_free(File->Memory);
+}
 FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
-                                               DEBUG_File_Slice File) {
+                                               DEBUG_File_Slice *File) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
-  // TODO: handle the failure case correctly this just logs for the moment
   if (!Handle) {
     fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
             SDL_GetError());
     return FILE_WRITE_FAIL;
   }
-  SDL_RWwrite(Handle, File.Memory, sizeof(u8), File.MemorySize);
+  SDL_RWwrite(Handle, File->Memory, sizeof(u8), File->MemorySize);
   SDL_RWclose(Handle);
   return FILE_WRITE_SUCCES;
 }
 
-// internal void AllocateBitmap(GameMemory *Memory, BitmapBuffer *Buffer) {
+//------------------------utils-----------------------------------------
 internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
   Buffer->Height = WINDOW_HEIGHT;
@@ -138,9 +144,75 @@ internal void UpdateWindow(Bitmap_Buffer Buffer, SDL_Renderer *renderer,
   SDL_RenderCopy(renderer, Texture, NULL, NULL);
   SDL_RenderPresent(renderer);
 }
+//-----------------------Recording------------------------------
+struct Input_Replay_State {
+  DEBUG_File_Slice InputRecordingFile;
+  i32 InputRecordingIndex;
+  DEBUG_File_Slice InputPlayBackFile;
+  i32 InputPlayBackIndex;
+};
+
+// TODO: write new input
+internal void StartReplayLoop(Input_Replay_State *InputReplayState,
+                              i32 InputRecordingIndex) {
+  const char *FileName = "test.rls";
+  InputReplayState->InputRecordingFile = DEBUGPlatformReadEntireFile(FileName);
+  if (InputReplayState->InputRecordingFile.Memory == NULL) {
+    return;
+  }
+  FILE_WRITE_STATUS FileWriteStatus = DEBUGPlatformWriteEntireFile(
+      FileName, &InputReplayState->InputRecordingFile);
+  if (FileWriteStatus == FILE_WRITE_FAIL) {
+    return;
+  }
+
+  InputReplayState->InputRecordingIndex = InputRecordingIndex;
+}
+
+internal void StopReplayLoop(Input_Replay_State *InputReplayState) {
+  DEBUGPlatformFreeEntireFile(&InputReplayState->InputRecordingFile);
+}
+
+internal void ReplayLoop(Input_Replay_State *InputReplayState,
+                         i32 InputRecordingIndex) {
+  StartReplayLoop(InputReplayState, InputRecordingIndex);
+  if (InputReplayState->InputRecordingFile.Memory == NULL) {
+    return;
+  }
+  StopReplayLoop(InputReplayState);
+}
+
+internal void StartPlayBackLoop(Input_Replay_State *InputReplayState,
+                                i32 InputPlayBackIndex) {
+  const char *FileName = "test.rls";
+  InputReplayState->InputPlayBackFile = DEBUGPlatformReadEntireFile(FileName);
+  InputReplayState->InputPlayBackIndex = InputPlayBackIndex;
+}
+
+internal void StopPlayBackLoop(Input_Replay_State *InputReplayState) {
+  DEBUGPlatformFreeEntireFile(&InputReplayState->InputPlayBackFile);
+}
+//------------------------Input--------------------------------------
+
+internal Game_Input MapKeyboardToInput(const u8 *KeyboardState) {
+  Game_Input GameInput = {};
+  if (KeyboardState[SDL_SCANCODE_RIGHT] || KeyboardState[SDL_SCANCODE_D]) {
+    GameInput.Right = true;
+  }
+  if (KeyboardState[SDL_SCANCODE_LEFT] || KeyboardState[SDL_SCANCODE_A]) {
+    GameInput.Left = true;
+  }
+  if (KeyboardState[SDL_SCANCODE_UP] || KeyboardState[SDL_SCANCODE_W]) {
+    GameInput.Up = true;
+  }
+  if (KeyboardState[SDL_SCANCODE_DOWN] || KeyboardState[SDL_SCANCODE_S]) {
+    GameInput.Down = true;
+  }
+  return GameInput;
+}
 
 //------------------------Audio--------------------------------------------
-void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
+internal void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
   *IsAudioPaused = !*IsAudioPaused;
   SDL_PauseAudioDevice(AudioDeviceID, *IsAudioPaused);
 }
@@ -182,6 +254,10 @@ internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
         event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
       ToggleAudio(AudioDeviceID, IsAudioPaused);
     }
+
+    if (event.key.repeat == 0 && event.key.keysym.scancode == SDL_SCANCODE_L) {
+        // TODO: loop
+    }
   } break;
   }
 }
@@ -210,7 +286,7 @@ int main() {
     return 1;
   }
   // TODO: hardcoded path
-  const char* GameLibPath= "./out/handmade.so";
+  const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
 
   SDL_Window *Window = SDL_CreateWindow("handmade hero", SDL_WINDOWPOS_CENTERED,
@@ -282,7 +358,8 @@ int main() {
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
 
     if (GameCode.IsValid) {
-      GameCode.Update(&Memory, GlobalBackBuffer, KeyboardState);
+      Game_Input GameInput = MapKeyboardToInput(KeyboardState);
+      GameCode.Update(&Memory, &GlobalBackBuffer, &GameInput);
     }
 
     u64 EndCounter = SDL_GetPerformanceCounter();

@@ -45,21 +45,11 @@ typedef i32 b32;
 #define Gigabytes(x) ((u64)(x) * 1024 * 1024 * 1024)
 #define Terabytes(x) ((u64)(x) * 1024 * 1024 * 1024 * 1024)
 
-enum Scan_Code {
-  // arrow keys
-  SCANCODE_RIGHT = 79,
-  SCANCODE_LEFT = 80,
-  SCANCODE_DOWN = 81,
-  SCANCODE_UP = 82,
-
-  // wasd
-  SCANCODE_W = 26,
-  SCANCODE_A = 4,
-  SCANCODE_S = 22,
-  SCANCODE_D = 7,
-
-  // spacebar
-  SCANCODE_SPACE = 44,
+struct Game_Input {
+  b32 Right;
+  b32 Left;
+  b32 Down;
+  b32 Up;
 };
 
 struct Game_Memory {
@@ -74,6 +64,10 @@ struct Game_State {
   struct {
     i32 XOffset;
     i32 YOffset;
+  };
+  struct {
+    i32 PlayerX;
+    i32 PlayerY;
   };
   struct {
     i32 SamplesPerSecond;
@@ -96,11 +90,6 @@ struct Audio_State {
   i32 SampleCount;
 };
 
-internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer);
- extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
-internal void GameMovement(Game_State *GameState, const u8 *KeyboardState);
-extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
-                           const u8 *KeyboardState);
 #if HANDMADE_INTERNAL
 typedef struct {
   void *Memory;
@@ -111,11 +100,23 @@ typedef struct {
 #define FILE_WRITE_SUCCES 0x0001
 typedef i32 FILE_WRITE_STATUS;
 
+#define FILE_READ_FAIL 0x0000
+#define FILE_READ_SUCCES 0x0001
+typedef i32 FILE_READ_STATUS;
+
 // NOTE: return NULL on failure
 DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
-void DEBUGPlatformFreeEntireFile(void *Memory);
+void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File);
 // NOTE: u64 only supports up to 4gb files
-FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File);
+FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
+                                               DEBUG_File_Slice *File);
 #endif
+
+internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);
+internal void PlayerRender(Game_State *GameState, Bitmap_Buffer *Buffer);
+extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
+internal void GameMovement(Game_State *GameState, Game_Input *GameInput);
+extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
+                           Game_Input *GameInput);
 
 #endif

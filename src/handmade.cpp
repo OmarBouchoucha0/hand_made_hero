@@ -1,12 +1,12 @@
 #include "handmade.h"
 
-internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer) {
+internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer) {
 
-  int pitch = Buffer.Width * Buffer.BytesPerPixel;
-  u8 *row = (u8 *)Buffer.Memory;
-  for (i32 y = 0; y < Buffer.Height; ++y) {
+  int pitch = Buffer->Width * Buffer->BytesPerPixel;
+  u8 *row = (u8 *)Buffer->Memory;
+  for (i32 y = 0; y < Buffer->Height; ++y) {
     u32 *pixel = (u32 *)row;
-    for (i32 x = 0; x < Buffer.Width; ++x) {
+    for (i32 x = 0; x < Buffer->Width; ++x) {
       u8 red = (u8)(x - GameState->XOffset);
       u8 green = 0;
       u8 blue = (u8)(y + GameState->YOffset);
@@ -16,18 +16,40 @@ internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer) {
   }
 }
 
-internal void GameMovement(Game_State *GameState, const u8 *KeyboardState) {
-  if (KeyboardState[SCANCODE_RIGHT] || KeyboardState[SCANCODE_D]) {
-    ++GameState->XOffset;
+internal void PlayerRender(Game_State *GameState, Bitmap_Buffer *Buffer) {
+  int pitch = Buffer->Width * Buffer->BytesPerPixel;
+  u8 *row = (u8 *)Buffer->Memory;
+  i32 PlayerHeight = 20;
+  i32 PlayerWidth = 20;
+  for (i32 y = 0; y < Buffer->Height; ++y) {
+    u32 *pixel = (u32 *)row;
+    for (i32 x = 0; x < Buffer->Width; ++x) {
+      if ((x >= GameState->PlayerX && x < GameState->PlayerX + PlayerWidth) &&
+          (y >= GameState->PlayerY && y < GameState->PlayerY + PlayerHeight)) {
+        u8 red = 255;
+        u8 green = 255;
+        u8 blue = 255;
+        *pixel++ = (red << 16 | green << 8 | blue);
+      } else {
+        pixel++;
+      }
+    }
+    row += pitch;
   }
-  if (KeyboardState[SCANCODE_LEFT] || KeyboardState[SCANCODE_A]) {
-    --GameState->XOffset;
+}
+
+internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
+  if (GameInput->Right) {
+    ++GameState->PlayerX;
   }
-  if (KeyboardState[SCANCODE_UP] || KeyboardState[SCANCODE_W]) {
-    ++GameState->YOffset;
+  if (GameInput->Left) {
+    --GameState->PlayerX;
   }
-  if (KeyboardState[SCANCODE_DOWN] || KeyboardState[SCANCODE_S]) {
-    --GameState->YOffset;
+  if (GameInput->Up) {
+    --GameState->PlayerY;
+  }
+  if (GameInput->Down) {
+    ++GameState->PlayerY;
   }
 }
 
@@ -47,13 +69,16 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   }
 }
 
-extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
-                           const u8 *KeyboardState) {
+extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
+                           Game_Input *GameInput) {
   Assert(sizeof(Game_State) <= Memory->PermanentStorageSize);
   Game_State *State = (Game_State *)Memory->PermanentStorage;
   if (!Memory->IsInitialised) {
     State->XOffset = 0;
     State->YOffset = 0;
+
+    State->PlayerX = Buffer->Height / 2;
+    State->PlayerY = Buffer->Width / 2;
 
     State->SamplesPerSecond = 48000;
     State->ToneHz = 100.0f;
@@ -62,7 +87,6 @@ extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer Buffer,
     Memory->IsInitialised = true;
   }
   GameRender(State, Buffer);
-  // TODO : we are updating the movement every frame its better to use dt when i
-  // implement that
-  GameMovement(State, KeyboardState);
+  PlayerRender(State, Buffer);
+  GameMovement(State, GameInput);
 }
