@@ -54,13 +54,21 @@ internal time_t GetLastWriteTime(const char *Path) {
 internal Game_Code LoadGameCode(const char *Path) {
   Game_Code Result = {};
   Result.Handle = dlopen(Path, RTLD_NOW);
-  if (Result.Handle) {
-    Result.Update = (Game_UpdateFn)dlsym(Result.Handle, "GameUpdate");
-    Result.Sound = (Game_SoundOutputFn)dlsym(Result.Handle, "GameSoundOutput");
-    Result.IsValid = (Result.Update != NULL);
-  } else {
+  if (!Result.Handle) {
     fprintf(stderr, "[ERR] dlopen failed: %s\n", dlerror());
+    return Result;
   }
+  Result.Update = (Game_UpdateFn)dlsym(Result.Handle, "GameUpdate");
+  if (!Result.Update) {
+    fprintf(stderr, "[ERR] dlsym GameUpdate failed: %s\n", dlerror());
+  }
+
+  Result.Sound = (Game_SoundOutputFn)dlsym(Result.Handle, "GameSoundOutput");
+  if (!Result.Sound) {
+    fprintf(stderr, "[ERR] dlsym GameSoundOutput failed: %s\n", dlerror());
+  }
+  Result.IsValid = (Result.Update && Result.Sound);
+
   return Result;
 }
 
@@ -83,16 +91,18 @@ DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   return File;
 }
 void DEBUGPlatformFreeEntireFile(void *Memory) { SDL_free(Memory); }
-void DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File) {
+FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
+                                               DEBUG_File_Slice File) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
   // TODO: handle the failure case correctly this just logs for the moment
   if (!Handle) {
     fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
             SDL_GetError());
-    return;
+    return FILE_WRITE_FAIL;
   }
   SDL_RWwrite(Handle, File.Memory, sizeof(u8), File.MemorySize);
   SDL_RWclose(Handle);
+  return FILE_WRITE_SUCCES;
 }
 
 // internal void AllocateBitmap(GameMemory *Memory, BitmapBuffer *Buffer) {
@@ -189,7 +199,7 @@ int main() {
 
   Game_Memory Memory = {};
   Memory.PermanentStorageSize = Megabytes(64);
-  Memory.TransiantStorageSize = Gigabytes(4);
+  Memory.TransiantStorageSize = Gigabytes(1);
   u64 TotalSize = Memory.PermanentStorageSize + Memory.TransiantStorageSize;
   Memory.PermanentStorage = mmap(BaseAddress, TotalSize, PROT_READ | PROT_WRITE,
                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -199,8 +209,9 @@ int main() {
     fprintf(stderr, "[ERR] Failed initilization: Memory Allocation\n");
     return 1;
   }
-  const char *GameLibPath = "./out/handmade.so";
-  Game_Code GameCode = LoadGameCode("GameLibPath");
+  // TODO: hardcoded path
+  const char* GameLibPath= "./out/handmade.so";
+  Game_Code GameCode = LoadGameCode(GameLibPath);
 
   SDL_Window *Window = SDL_CreateWindow("handmade hero", SDL_WINDOWPOS_CENTERED,
                                         SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH,
@@ -305,6 +316,7 @@ int main() {
   }
   // NOTE: not sure if the quit is nessecary since the os does the cleanup but
   // its here for now
+  UnloadGameCode(&GameCode);
   SDL_Quit();
   return 0;
 }

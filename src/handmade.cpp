@@ -4,7 +4,6 @@ internal void GameRender(Game_State *GameState, Bitmap_Buffer Buffer) {
 
   int pitch = Buffer.Width * Buffer.BytesPerPixel;
   u8 *row = (u8 *)Buffer.Memory;
-
   for (i32 y = 0; y < Buffer.Height; ++y) {
     u32 *pixel = (u32 *)row;
     for (i32 x = 0; x < Buffer.Width; ++x) {

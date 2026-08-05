@@ -107,11 +107,15 @@ typedef struct {
   u32 MemorySize;
 } DEBUG_File_Slice;
 
+#define FILE_WRITE_FAIL 0x0000
+#define FILE_WRITE_SUCCES 0x0001
+typedef i32 FILE_WRITE_STATUS;
+
 // NOTE: return NULL on failure
 DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
 void DEBUGPlatformFreeEntireFile(void *Memory);
 // NOTE: u64 only supports up to 4gb files
-void DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File);
+FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName, DEBUG_File_Slice File);
 #endif
 
 #endif
