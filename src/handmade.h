@@ -72,7 +72,13 @@ struct Game_State {
   struct {
     i32 SamplesPerSecond;
     i32 ToneHz;
-    i32 SampleIndex;
+    i32 TSine;
+  };
+  struct {
+    b32 GlobalPause;
+    b32 AudioPause;
+    b32 Recording;
+    b32 Playback;
   };
 };
 
@@ -110,6 +116,7 @@ void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File);
 // NOTE: u64 only supports up to 4gb files
 FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
                                                DEBUG_File_Slice *File);
+FILE_WRITE_STATUS DEBUGPlatformAppendToFile(const char *FileName, void *Memory);
 #endif
 
 internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);

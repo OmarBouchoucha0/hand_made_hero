@@ -57,36 +57,37 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   i16 right = 0;
   i16 left = 0;
   i32 Amp = 6000;
-  f32 Angle = 0;
+  f32 AngleIncrement =
+      2.0f * PI * GameState->ToneHz / (f32)GameState->SamplesPerSecond;
   for (i32 i = 0; i < AudioState.SampleCount; i += 2) {
-    Angle = 2.0f * PI * (f32)GameState->ToneHz * (f32)GameState->SampleIndex /
-            (f32)GameState->SamplesPerSecond;
-    left = (i16)((f32)Amp * sinf(Angle));
-    right = (i16)((f32)Amp * sinf(Angle));
+    left = (i16)((f32)Amp * sinf(GameState->TSine));
+    right = left;
     *AudioState.SampleOut++ = left;
     *AudioState.SampleOut++ = right;
-    ++GameState->SampleIndex;
+
+    GameState->TSine += AngleIncrement;
+    if (GameState->TSine > 2.0f * PI) {
+      GameState->TSine -= 2.0f * PI;
+    }
   }
 }
 
 extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
                            Game_Input *GameInput) {
   Assert(sizeof(Game_State) <= Memory->PermanentStorageSize);
-  Game_State *State = (Game_State *)Memory->PermanentStorage;
+  Game_State *GameState = (Game_State *)Memory->PermanentStorage;
   if (!Memory->IsInitialised) {
-    State->XOffset = 0;
-    State->YOffset = 0;
+    *GameState = {};
 
-    State->PlayerX = Buffer->Height / 2;
-    State->PlayerY = Buffer->Width / 2;
+    GameState->PlayerX = Buffer->Height / 2;
+    GameState->PlayerY = Buffer->Width / 2;
 
-    State->SamplesPerSecond = 48000;
-    State->ToneHz = 100.0f;
-    State->SampleIndex = 0;
+    GameState->SamplesPerSecond = 48000;
+    GameState->ToneHz = 100.0f;
 
     Memory->IsInitialised = true;
   }
-  GameRender(State, Buffer);
-  PlayerRender(State, Buffer);
-  GameMovement(State, GameInput);
+  GameRender(GameState, Buffer);
+  PlayerRender(GameState, Buffer);
+  GameMovement(GameState, GameInput);
 }

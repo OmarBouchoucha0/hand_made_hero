@@ -111,6 +111,22 @@ FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
   return FILE_WRITE_SUCCES;
 }
 
+SDL_RWops *DEBUGPlatformGetFileHandle(const char *FileName) {
+  SDL_RWops *Handle = SDL_RWFromFile(FileName, "a");
+  if (!Handle) {
+    fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
+            SDL_GetError());
+  }
+  return Handle;
+}
+
+void DEBUGPlatformAppendToFile(SDL_RWops *Handle, void *Memory) {
+  SDL_RWwrite(Handle, Memory, sizeof(u8), sizeof(Memory));
+  SDL_RWclose(Handle);
+}
+
+void DEBUGPlatformCloseFile(SDL_RWops *Handle) { SDL_RWclose(Handle); }
+
 //------------------------utils-----------------------------------------
 internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
   Buffer->Width = WINDOW_WIDTH;
@@ -146,33 +162,54 @@ internal void UpdateWindow(Bitmap_Buffer Buffer, SDL_Renderer *renderer,
 }
 //-----------------------Recording------------------------------
 struct Input_Replay_State {
-  DEBUG_File_Slice InputRecordingFile;
+  const char *FileName;
+  SDL_RWops *InputRecordingFileHanlde;
   i32 InputRecordingIndex;
-  DEBUG_File_Slice InputPlayBackFile;
-  i32 InputPlayBackIndex;
+  SDL_RWops *InputPlaybackFileHanlde;
+  i32 InputPlaybackIndex;
 };
 
-internal void AddReplayLoopToFile(Input_Replay_State *InputReplayState,
-                                  i32 InputRecordingIndex,
-                                  GameInput GameInput[], const char *FileName) {
-  FILE_WRITE_STATUS FileWriteStatus =
-      DEBUGPlatformWriteEntireFile(FileName, GameInput);
-  if (FileWriteStatus == FILE_WRITE_FAIL) {
-    return;
-  }
-  InputReplayState->InputRecordingIndex = InputRecordingIndex;
-  DEBUGPlatformFreeEntireFile(&InputReplayState->InputRecordingFile);
+internal void RecordInput(Input_Replay_State *InputReplayState,
+                          Game_Input *GameInput) {
+  DEBUGPlatformAppendToFile(InputReplayState->InputRecordingFileHanlde,
+                            (void *)GameInput);
+  ++InputReplayState->InputRecordingIndex;
 }
 
-internal void StartPlayBackLoop(Input_Replay_State *InputReplayState,
-                                i32 InputPlayBackIndex) {
-  const char *FileName = "test.rls";
-  InputReplayState->InputPlayBackFile = DEBUGPlatformReadEntireFile(FileName);
-  InputReplayState->InputPlayBackIndex = InputPlayBackIndex;
-  DEBUGPlatformFreeEntireFile(&InputReplayState->InputPlayBackFile);
+internal void BeginInputRecording(Game_State *GameState,
+                                  Input_Replay_State *InputReplayState) {
+  GameState->Recording = true;
+  InputReplayState->InputRecordingIndex = 0;
+  InputReplayState->InputRecordingFileHanlde =
+      DEBUGPlatformGetFileHandle(InputReplayState->FileName);
 }
+
+internal void StopInputRecording(Game_State *GameState,
+                                 Input_Replay_State *InputReplayState) {
+  DEBUGPlatformCloseFile(InputReplayState->InputRecordingFileHanlde);
+  GameState->Recording = false;
+}
+
+internal Game_Input PlaybackInput(Input_Replay_State *InputReplayState) {
+  // TODO: finish this
+  Assert("todo");
+  Game_Input GameInput = {};
+  ++InputReplayState->InputPlaybackIndex;
+  return GameInput;
+}
+
+internal void BeginInputPlayback(Game_State *GameState,
+                                 Input_Replay_State *InputReplayState) {
+  GameState->Playback = true;
+  InputReplayState->InputPlaybackIndex = 0;
+}
+
+internal void StopInputPlayback(Game_State *GameState, Input_Replay_State *InputReplayState) {
+  DEBUGPlatformCloseFile(InputReplayState->InputPlaybackFileHanlde);
+  GameState->Playback = false;
+}
+
 //------------------------Input--------------------------------------
-
 internal void MapKeyboardToInput(const u8 *KeyboardState,
                                  Game_Input *GameInput) {
   if (KeyboardState[SDL_SCANCODE_RIGHT] || KeyboardState[SDL_SCANCODE_D]) {
@@ -230,9 +267,9 @@ internal void MapJoystickToInput(SDL_GameController *GameController,
 }
 
 //------------------------Audio--------------------------------------------
-internal void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *IsAudioPaused) {
-  *IsAudioPaused = !*IsAudioPaused;
-  SDL_PauseAudioDevice(AudioDeviceID, *IsAudioPaused);
+internal void ToggleAudio(SDL_AudioDeviceID AudioDeviceID, b32 *AudioPause) {
+  *AudioPause = !*AudioPause;
+  SDL_PauseAudioDevice(AudioDeviceID, *AudioPause);
 }
 
 void AudioCallback(void *userdata, u8 *stream, i32 len) {
@@ -250,7 +287,8 @@ void AudioCallback(void *userdata, u8 *stream, i32 len) {
 internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
                           SDL_Renderer *Renderer, SDL_Texture **Texture,
                           SDL_Event event, SDL_AudioDeviceID AudioDeviceID,
-                          b32 *IsAudioPaused) {
+                          Game_State *GameState,
+                          Input_Replay_State *InputReplayState) {
   switch (event.type) {
   case SDL_QUIT: {
     printf("[INFO] user quit\n");
@@ -270,22 +308,25 @@ internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
   case SDL_KEYDOWN: {
     if (event.key.repeat == 0 &&
         event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-      ToggleAudio(AudioDeviceID, IsAudioPaused);
+      ToggleAudio(AudioDeviceID, &GameState->AudioPause);
     }
-
+    if (event.key.repeat == 0 && event.key.keysym.scancode == SDL_SCANCODE_P) {
+      GameState->GlobalPause = !GameState->GlobalPause;
+    }
     if (event.key.repeat == 0 && event.key.keysym.scancode == SDL_SCANCODE_L) {
-      // TODO: loop
+      if (InputReplayState->InputRecordingIndex == 0) {
+        BeginInputRecording(GameState, InputReplayState);
+        StopInputPlayback(GameState, InputReplayState);
+      } else {
+        StopInputRecording(GameState, InputReplayState);
+        BeginInputPlayback(GameState, InputReplayState);
+      }
     }
   } break;
   }
 }
 
 int main() {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-    fprintf(stderr, "failed to init SDL\n");
-    return 1;
-  }
-
   void *BaseAddress = (void *)Terabytes(2);
 #if !HANDMADE_INTERNAL
   *BaseAddress = 0;
@@ -294,6 +335,7 @@ int main() {
   Game_Memory Memory = {};
   Memory.PermanentStorageSize = Megabytes(64);
   Memory.TransiantStorageSize = Gigabytes(1);
+
   u64 TotalSize = Memory.PermanentStorageSize + Memory.TransiantStorageSize;
   Memory.PermanentStorage = mmap(BaseAddress, TotalSize, PROT_READ | PROT_WRITE,
                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -303,9 +345,29 @@ int main() {
     fprintf(stderr, "[ERR] Failed initilization: Memory Allocation\n");
     return 1;
   }
+
+  Game_State *GameState = {};
+
   // TODO: hardcoded path
   const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
+
+  Game_Logic_And_State GameLogicAndState = {};
+  GameLogicAndState.GameCode = GameCode;
+  GameLogicAndState.Memory = Memory;
+
+  Bitmap_Buffer GlobalBackBuffer = {};
+  GlobalBackBuffer.BytesPerPixel = 4;
+  AllocateBitmap(&GlobalBackBuffer);
+
+  Input_Replay_State *InputReplayState = {};
+  InputReplayState->FileName = "test.rpf";
+
+  Game_Input GameInput = {};
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+    fprintf(stderr, "failed to init SDL\n");
+    return 1;
+  }
 
   SDL_Window *Window = SDL_CreateWindow("handmade hero", SDL_WINDOWPOS_CENTERED,
                                         SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH,
@@ -314,10 +376,6 @@ int main() {
   SDL_Texture *Texture = SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
                                            SDL_TEXTUREACCESS_STREAMING,
                                            WINDOW_WIDTH, WINDOW_HEIGHT);
-  Game_Logic_And_State GameLogicAndState = {};
-  GameLogicAndState.GameCode = GameCode;
-  GameLogicAndState.Memory = Memory;
-
   SDL_AudioSpec AudioDesired = {};
   AudioDesired.freq = AUDIO_FREQ;
   AudioDesired.format = AUDIO_FORMAT;
@@ -330,23 +388,27 @@ int main() {
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
       NULL, 0, &AudioDesired, &AudioObtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
-  if (Window == NULL || Renderer == NULL || AudioDeviceID == 0) {
+  SDL_GameController *GameController = {};
+  int NumberJoysticks = SDL_NumJoysticks();
+  if (NumberJoysticks > 0) {
+    GameController = SDL_GameControllerOpen(0);
+  }
+
+  if (Window == NULL || Renderer == NULL || AudioDeviceID == 0 ||
+      GameController == NULL || NumberJoysticks < 0) {
     fprintf(stderr, "[ERR] Failed initilization: %s\n", SDL_GetError());
     return 1;
   }
-
-  const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
-  b32 IsAudioPaused = true;
-
-  Bitmap_Buffer GlobalBackBuffer = {};
-  GlobalBackBuffer.BytesPerPixel = 4;
-  AllocateBitmap(&GlobalBackBuffer);
 
   SDL_DisplayMode Mode;
   int DisplayIndex = SDL_GetWindowDisplayIndex(Window);
   if (SDL_GetCurrentDisplayMode(DisplayIndex, &Mode)) {
     fprintf(stderr, "[ERR] Failed to get display mode: %s\n", SDL_GetError());
   }
+
+  const u8 *KeyboardState = SDL_GetKeyboardState(NULL);
+  b32 IsAudioPaused = true;
+
   i32 MonitorRefreshRate = (Mode.refresh_rate > 0) ? Mode.refresh_rate : 60;
   i32 GameRefreshRate = MonitorRefreshRate / 1;
   f32 TargetMilliSecondsPerFrame = 1000.0f / (f32)GameRefreshRate;
@@ -371,31 +433,24 @@ int main() {
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
-                  AudioDeviceID, &IsAudioPaused);
+                  AudioDeviceID, GameState, InputReplayState);
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
 
     if (GameCode.IsValid) {
-      Game_Input GameInput = {};
-
-      // TODO: only update the controllers when they change numbers
-      // (SDL_CONTROLLERDEVICEADDED/SDL_CONTROLLERDEVICEREMOVED)
-      SDL_GameController *GameController = {};
-      int NumberJoysticks = SDL_NumJoysticks();
-      if (NumberJoysticks < 0) {
-        fprintf(stderr, "[ERR] Joystick: %s\n", SDL_GetError());
-      }
+      GameInput = {};
       if (NumberJoysticks > 0) {
-        GameController = SDL_GameControllerOpen(0);
-        if (GameController == NULL) {
-          fprintf(stderr, "[ERR] GameController: %s\n", SDL_GetError());
-        } else {
-          MapJoystickToInput(GameController, &GameInput);
-        }
+        MapJoystickToInput(GameController, &GameInput);
       }
-
       MapKeyboardToInput(KeyboardState, &GameInput);
+      GameState = (Game_State *)Memory.PermanentStorage;
+      if (GameState->Playback) {
+        GameInput = PlaybackInput(InputReplayState);
+      }
       GameCode.Update(&Memory, &GlobalBackBuffer, &GameInput);
+      if (GameState->Recording) {
+        RecordInput(InputReplayState, &GameInput);
+      }
       SDL_GameControllerClose(GameController);
     }
 
@@ -406,8 +461,8 @@ int main() {
     f64 RealFps = 1000.0f / ElapsedMS;
 
     if (ElapsedMS < TargetMilliSecondsPerFrame) {
-      // NOTE: we give the os time to wake up with the 1 ms delay, we still have
-      // some occasional spikes not sure why
+      // NOTE: we give the os time to wake up with the 1 ms delay, we still
+      // have some occasional spikes not sure why
       SDL_Delay((u32)(TargetMilliSecondsPerFrame - ElapsedMS - 1.0f));
       while (ElapsedMS < TargetMilliSecondsPerFrame) {
         EndCounter = SDL_GetPerformanceCounter();
