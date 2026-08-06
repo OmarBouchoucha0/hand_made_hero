@@ -152,34 +152,16 @@ struct Input_Replay_State {
   i32 InputPlayBackIndex;
 };
 
-// TODO: write new input
-internal void StartReplayLoop(Input_Replay_State *InputReplayState,
-                              i32 InputRecordingIndex) {
-  const char *FileName = "test.rls";
-  InputReplayState->InputRecordingFile = DEBUGPlatformReadEntireFile(FileName);
-  if (InputReplayState->InputRecordingFile.Memory == NULL) {
-    return;
-  }
-  FILE_WRITE_STATUS FileWriteStatus = DEBUGPlatformWriteEntireFile(
-      FileName, &InputReplayState->InputRecordingFile);
+internal void AddReplayLoopToFile(Input_Replay_State *InputReplayState,
+                                  i32 InputRecordingIndex,
+                                  GameInput GameInput[], const char *FileName) {
+  FILE_WRITE_STATUS FileWriteStatus =
+      DEBUGPlatformWriteEntireFile(FileName, GameInput);
   if (FileWriteStatus == FILE_WRITE_FAIL) {
     return;
   }
-
   InputReplayState->InputRecordingIndex = InputRecordingIndex;
-}
-
-internal void StopReplayLoop(Input_Replay_State *InputReplayState) {
   DEBUGPlatformFreeEntireFile(&InputReplayState->InputRecordingFile);
-}
-
-internal void ReplayLoop(Input_Replay_State *InputReplayState,
-                         i32 InputRecordingIndex) {
-  StartReplayLoop(InputReplayState, InputRecordingIndex);
-  if (InputReplayState->InputRecordingFile.Memory == NULL) {
-    return;
-  }
-  StopReplayLoop(InputReplayState);
 }
 
 internal void StartPlayBackLoop(Input_Replay_State *InputReplayState,
@@ -187,28 +169,64 @@ internal void StartPlayBackLoop(Input_Replay_State *InputReplayState,
   const char *FileName = "test.rls";
   InputReplayState->InputPlayBackFile = DEBUGPlatformReadEntireFile(FileName);
   InputReplayState->InputPlayBackIndex = InputPlayBackIndex;
-}
-
-internal void StopPlayBackLoop(Input_Replay_State *InputReplayState) {
   DEBUGPlatformFreeEntireFile(&InputReplayState->InputPlayBackFile);
 }
 //------------------------Input--------------------------------------
 
-internal Game_Input MapKeyboardToInput(const u8 *KeyboardState) {
-  Game_Input GameInput = {};
+internal void MapKeyboardToInput(const u8 *KeyboardState,
+                                 Game_Input *GameInput) {
   if (KeyboardState[SDL_SCANCODE_RIGHT] || KeyboardState[SDL_SCANCODE_D]) {
-    GameInput.Right = true;
+    GameInput->Right = true;
   }
   if (KeyboardState[SDL_SCANCODE_LEFT] || KeyboardState[SDL_SCANCODE_A]) {
-    GameInput.Left = true;
+    GameInput->Left = true;
   }
   if (KeyboardState[SDL_SCANCODE_UP] || KeyboardState[SDL_SCANCODE_W]) {
-    GameInput.Up = true;
+    GameInput->Up = true;
   }
   if (KeyboardState[SDL_SCANCODE_DOWN] || KeyboardState[SDL_SCANCODE_S]) {
-    GameInput.Down = true;
+    GameInput->Down = true;
   }
-  return GameInput;
+}
+
+internal void MapJoystickToInput(SDL_GameController *GameController,
+                                 Game_Input *GameInput) {
+
+  if (SDL_GameControllerGetButton(GameController,
+                                  SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) {
+    GameInput->Right = true;
+  }
+  if (SDL_GameControllerGetButton(GameController,
+                                  SDL_CONTROLLER_BUTTON_DPAD_LEFT)) {
+    GameInput->Left = true;
+  }
+  if (SDL_GameControllerGetButton(GameController,
+                                  SDL_CONTROLLER_BUTTON_DPAD_UP)) {
+    GameInput->Up = true;
+  }
+  if (SDL_GameControllerGetButton(GameController,
+                                  SDL_CONTROLLER_BUTTON_DPAD_DOWN)) {
+    GameInput->Down = true;
+  }
+
+  i16 StickX =
+      SDL_GameControllerGetAxis(GameController, SDL_CONTROLLER_AXIS_LEFTX);
+  i16 StickY =
+      SDL_GameControllerGetAxis(GameController, SDL_CONTROLLER_AXIS_LEFTY);
+  const i16 DeadZone = 8000;
+
+  if (StickX > DeadZone) {
+    GameInput->Right = true;
+  }
+  if (StickX < -DeadZone) {
+    GameInput->Left = true;
+  }
+  if (StickY < -DeadZone) {
+    GameInput->Up = true;
+  }
+  if (StickY > DeadZone) {
+    GameInput->Down = true;
+  }
 }
 
 //------------------------Audio--------------------------------------------
@@ -256,7 +274,7 @@ internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
     }
 
     if (event.key.repeat == 0 && event.key.keysym.scancode == SDL_SCANCODE_L) {
-        // TODO: loop
+      // TODO: loop
     }
   } break;
   }
@@ -358,8 +376,27 @@ int main() {
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
 
     if (GameCode.IsValid) {
-      Game_Input GameInput = MapKeyboardToInput(KeyboardState);
+      Game_Input GameInput = {};
+
+      // TODO: only update the controllers when they change numbers
+      // (SDL_CONTROLLERDEVICEADDED/SDL_CONTROLLERDEVICEREMOVED)
+      SDL_GameController *GameController = {};
+      int NumberJoysticks = SDL_NumJoysticks();
+      if (NumberJoysticks < 0) {
+        fprintf(stderr, "[ERR] Joystick: %s\n", SDL_GetError());
+      }
+      if (NumberJoysticks > 0) {
+        GameController = SDL_GameControllerOpen(0);
+        if (GameController == NULL) {
+          fprintf(stderr, "[ERR] GameController: %s\n", SDL_GetError());
+        } else {
+          MapJoystickToInput(GameController, &GameInput);
+        }
+      }
+
+      MapKeyboardToInput(KeyboardState, &GameInput);
       GameCode.Update(&Memory, &GlobalBackBuffer, &GameInput);
+      SDL_GameControllerClose(GameController);
     }
 
     u64 EndCounter = SDL_GetPerformanceCounter();
