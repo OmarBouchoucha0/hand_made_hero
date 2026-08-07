@@ -72,7 +72,8 @@ struct Game_State {
   struct {
     i32 SamplesPerSecond;
     i32 ToneHz;
-    i32 TSine;
+    f32 TSine;
+    i32 SampleIndex;
   };
   struct {
     b32 GlobalPause;
@@ -117,6 +118,7 @@ void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File);
 FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
                                                DEBUG_File_Slice *File);
 FILE_WRITE_STATUS DEBUGPlatformAppendToFile(const char *FileName, void *Memory);
+
 #endif
 
 internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);

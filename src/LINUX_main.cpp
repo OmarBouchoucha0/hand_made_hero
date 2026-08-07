@@ -95,9 +95,11 @@ DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName) {
   }
   return File;
 }
+
 void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File) {
   SDL_free(File->Memory);
 }
+
 FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
                                                DEBUG_File_Slice *File) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "w");
@@ -111,7 +113,7 @@ FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
   return FILE_WRITE_SUCCES;
 }
 
-SDL_RWops *DEBUGPlatformGetFileHandle(const char *FileName) {
+SDL_RWops *DEBUGPlatformGetAppendFileHandle(const char *FileName) {
   SDL_RWops *Handle = SDL_RWFromFile(FileName, "a");
   if (!Handle) {
     fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
@@ -120,9 +122,18 @@ SDL_RWops *DEBUGPlatformGetFileHandle(const char *FileName) {
   return Handle;
 }
 
-void DEBUGPlatformAppendToFile(SDL_RWops *Handle, void *Memory) {
-  SDL_RWwrite(Handle, Memory, sizeof(u8), sizeof(Memory));
-  SDL_RWclose(Handle);
+SDL_RWops *DEBUGPlatformGetReadFileHandle(const char *FileName) {
+  SDL_RWops *Handle = SDL_RWFromFile(FileName, "rb");
+  if (!Handle) {
+    fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
+            SDL_GetError());
+  }
+  return Handle;
+}
+
+void DEBUGPlatformAppendToFile(SDL_RWops *Handle, void *Memory,
+                               u32 MemorySize) {
+  SDL_RWwrite(Handle, Memory, sizeof(u8), MemorySize);
 }
 
 void DEBUGPlatformCloseFile(SDL_RWops *Handle) { SDL_RWclose(Handle); }
@@ -171,37 +182,48 @@ struct Input_Replay_State {
 
 internal void BeginInputRecording(Game_State *GameState,
                                   Input_Replay_State *InputReplayState) {
-  GameState->Recording = true;
-  InputReplayState->InputRecordingIndex = 0;
-  InputReplayState->InputRecordingFileHanlde =
-      DEBUGPlatformGetFileHandle(InputReplayState->FileName);
+
+  if (GameState->Recording == false) {
+    GameState->Recording = true;
+    InputReplayState->InputRecordingIndex = 0;
+    InputReplayState->InputRecordingFileHanlde =
+        DEBUGPlatformGetAppendFileHandle(InputReplayState->FileName);
+  }
 }
 
 internal void StopInputRecording(Game_State *GameState,
                                  Input_Replay_State *InputReplayState) {
-  DEBUGPlatformCloseFile(InputReplayState->InputRecordingFileHanlde);
-  GameState->Recording = false;
+
+  if (GameState->Recording == true) {
+    DEBUGPlatformCloseFile(InputReplayState->InputRecordingFileHanlde);
+    GameState->Recording = false;
+  }
 }
 
 internal void RecordInput(Input_Replay_State *InputReplayState,
                           Game_Input *GameInput) {
   DEBUGPlatformAppendToFile(InputReplayState->InputRecordingFileHanlde,
-                            (void *)GameInput);
+                            (void *)GameInput, sizeof(Game_Input));
   ++InputReplayState->InputRecordingIndex;
 }
 
 internal void BeginInputPlayback(Game_State *GameState,
                                  Input_Replay_State *InputReplayState) {
-  GameState->Playback = true;
-  InputReplayState->InputPlaybackIndex = 0;
-  InputReplayState->InputPlaybackFileHanlde =
-      DEBUGPlatformGetFileHandle(InputReplayState->FileName);
+
+  if (GameState->Playback == false) {
+    GameState->Playback = true;
+    InputReplayState->InputPlaybackIndex = 0;
+    InputReplayState->InputPlaybackFileHanlde =
+        DEBUGPlatformGetReadFileHandle(InputReplayState->FileName);
+  }
 }
 
 internal void StopInputPlayback(Game_State *GameState,
                                 Input_Replay_State *InputReplayState) {
-  DEBUGPlatformCloseFile(InputReplayState->InputPlaybackFileHanlde);
-  GameState->Playback = false;
+  if (GameState->Playback == true) {
+    DEBUGPlatformCloseFile(InputReplayState->InputPlaybackFileHanlde);
+    GameState->Playback = false;
+  }
 }
 
 internal Game_Input PlaybackInput(Game_State *GameState,
@@ -213,11 +235,14 @@ internal Game_Input PlaybackInput(Game_State *GameState,
   if (Result == -1) {
     fprintf(stderr, "[ERR] Seek failed: %s\n", SDL_GetError());
   }
-  Game_Input Input = {};
-  u64 ChunksRead = SDL_RWread(InputReplayState->InputPlaybackFileHanlde, &Input,
-                              sizeof(Game_Input), 1);
-  if (ChunksRead != 1) {
+  if (InputReplayState->InputPlaybackIndex <
+      InputReplayState->InputRecordingIndex) {
+    u64 ChunksRead = SDL_RWread(InputReplayState->InputPlaybackFileHanlde,
+                                &GameInput, sizeof(Game_Input), 1);
+  } else {
     StopInputPlayback(GameState, InputReplayState);
+    InputReplayState->InputRecordingIndex = 0;
+    return GameInput;
   }
   ++InputReplayState->InputPlaybackIndex;
   return GameInput;
@@ -269,10 +294,10 @@ internal void MapJoystickToInput(SDL_GameController *GameController,
   if (StickX > DeadZone) {
     GameInput->Right = true;
   }
-  if (StickX < -DeadZone) {
+  if (StickX < (-DeadZone)) {
     GameInput->Left = true;
   }
-  if (StickY < -DeadZone) {
+  if (StickY < (-DeadZone)) {
     GameInput->Up = true;
   }
   if (StickY > DeadZone) {
@@ -391,6 +416,7 @@ int main() {
   // TODO: hardcoded path
   const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
+  GameCode.LastWriteTime = GetLastWriteTime(GameLibPath);
 
   Game_Logic_And_State GameLogicAndState = {};
   GameLogicAndState.GameCode = GameCode;
@@ -401,10 +427,11 @@ int main() {
   AllocateBitmap(&GlobalBackBuffer);
 
   Input_Replay_State InputReplayState = {};
-  InputReplayState.FileName = "test.rpf";
+  InputReplayState.FileName = "./assets/test.rpf";
 
   Game_Input GameInput = {};
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
+      0) {
     fprintf(stderr, "failed to init SDL\n");
     return 1;
   }
@@ -427,6 +454,7 @@ int main() {
   SDL_AudioSpec AudioObtained;
   SDL_AudioDeviceID AudioDeviceID = SDL_OpenAudioDevice(
       NULL, 0, &AudioDesired, &AudioObtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+  SDL_PauseAudioDevice(AudioDeviceID, true);
 
   SDL_GameController *GameController = {};
   i32 NumberJoysticks = SDL_NumJoysticks();
@@ -467,6 +495,9 @@ int main() {
       UnloadGameCode(&GameCode);
       GameCode = LoadGameCode(GameLibPath);
       GameCode.LastWriteTime = NewWriteTime;
+      // TODO: this is beign read by sdl's audio thread so updating it may cause
+      // a race condition
+      GameLogicAndState.GameCode = GameCode;
       printf("[INFO] game code reloaded\n");
     }
 

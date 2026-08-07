@@ -64,7 +64,6 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
     right = left;
     *AudioState.SampleOut++ = left;
     *AudioState.SampleOut++ = right;
-
     GameState->TSine += AngleIncrement;
     if (GameState->TSine > 2.0f * PI) {
       GameState->TSine -= 2.0f * PI;
