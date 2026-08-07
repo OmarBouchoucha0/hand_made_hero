@@ -10,8 +10,8 @@
 #include <SDL2/SDL.h>
 
 global_variable b32 Running = true;
-global_variable i32 WINDOW_WIDTH;
-global_variable i32 WINDOW_HEIGHT;
+global_variable i32 WINDOW_WIDTH = 1600;
+global_variable i32 WINDOW_HEIGHT = 900;
 
 #if !HANDMADE_INTERNAL
 internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
@@ -164,17 +164,10 @@ internal void UpdateWindow(Bitmap_Buffer Buffer, SDL_Renderer *renderer,
 struct Input_Replay_State {
   const char *FileName;
   SDL_RWops *InputRecordingFileHanlde;
-  i32 InputRecordingIndex;
+  u64 InputRecordingIndex;
   SDL_RWops *InputPlaybackFileHanlde;
-  i32 InputPlaybackIndex;
+  u64 InputPlaybackIndex;
 };
-
-internal void RecordInput(Input_Replay_State *InputReplayState,
-                          Game_Input *GameInput) {
-  DEBUGPlatformAppendToFile(InputReplayState->InputRecordingFileHanlde,
-                            (void *)GameInput);
-  ++InputReplayState->InputRecordingIndex;
-}
 
 internal void BeginInputRecording(Game_State *GameState,
                                   Input_Replay_State *InputReplayState) {
@@ -190,23 +183,44 @@ internal void StopInputRecording(Game_State *GameState,
   GameState->Recording = false;
 }
 
-internal Game_Input PlaybackInput(Input_Replay_State *InputReplayState) {
-  // TODO: finish this
-  Assert("todo");
-  Game_Input GameInput = {};
-  ++InputReplayState->InputPlaybackIndex;
-  return GameInput;
+internal void RecordInput(Input_Replay_State *InputReplayState,
+                          Game_Input *GameInput) {
+  DEBUGPlatformAppendToFile(InputReplayState->InputRecordingFileHanlde,
+                            (void *)GameInput);
+  ++InputReplayState->InputRecordingIndex;
 }
 
 internal void BeginInputPlayback(Game_State *GameState,
                                  Input_Replay_State *InputReplayState) {
   GameState->Playback = true;
   InputReplayState->InputPlaybackIndex = 0;
+  InputReplayState->InputPlaybackFileHanlde =
+      DEBUGPlatformGetFileHandle(InputReplayState->FileName);
 }
 
-internal void StopInputPlayback(Game_State *GameState, Input_Replay_State *InputReplayState) {
+internal void StopInputPlayback(Game_State *GameState,
+                                Input_Replay_State *InputReplayState) {
   DEBUGPlatformCloseFile(InputReplayState->InputPlaybackFileHanlde);
   GameState->Playback = false;
+}
+
+internal Game_Input PlaybackInput(Game_State *GameState,
+                                  Input_Replay_State *InputReplayState) {
+  Game_Input GameInput = {};
+  i64 Offset = InputReplayState->InputPlaybackIndex * sizeof(Game_Input);
+  i64 Result = SDL_RWseek(InputReplayState->InputPlaybackFileHanlde, Offset,
+                          RW_SEEK_SET);
+  if (Result == -1) {
+    fprintf(stderr, "[ERR] Seek failed: %s\n", SDL_GetError());
+  }
+  Game_Input Input = {};
+  u64 ChunksRead = SDL_RWread(InputReplayState->InputPlaybackFileHanlde, &Input,
+                              sizeof(Game_Input), 1);
+  if (ChunksRead != 1) {
+    StopInputPlayback(GameState, InputReplayState);
+  }
+  ++InputReplayState->InputPlaybackIndex;
+  return GameInput;
 }
 
 //------------------------Input--------------------------------------
@@ -288,7 +302,9 @@ internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
                           SDL_Renderer *Renderer, SDL_Texture **Texture,
                           SDL_Event event, SDL_AudioDeviceID AudioDeviceID,
                           Game_State *GameState,
-                          Input_Replay_State *InputReplayState) {
+                          Input_Replay_State *InputReplayState,
+                          SDL_GameController **GameController,
+                          i32 NumberJoysticks) {
   switch (event.type) {
   case SDL_QUIT: {
     printf("[INFO] user quit\n");
@@ -320,6 +336,30 @@ internal void HandleEvent(Bitmap_Buffer *Buffer, SDL_Window *window,
       } else {
         StopInputRecording(GameState, InputReplayState);
         BeginInputPlayback(GameState, InputReplayState);
+      }
+    }
+  } break;
+    // NOTE: only 1 controller allowed
+  case SDL_CONTROLLERDEVICEADDED: {
+    if (NumberJoysticks == 0) {
+      SDL_GameController *NewController = SDL_GameControllerOpen(0);
+      NumberJoysticks = SDL_NumJoysticks();
+      if (NewController) {
+        printf("[INFO] controller connected\n");
+        *GameController = NewController;
+      } else {
+        fprintf(stderr, "[ERR] Failed to open controller: %s\n",
+                SDL_GetError());
+      }
+    }
+  } break;
+  case SDL_CONTROLLERDEVICEREMOVED: {
+    if (NumberJoysticks == 1) {
+      printf("[INFO] controller disconnected\n");
+      if (*GameController) {
+        SDL_GameControllerClose(*GameController);
+        *GameController = NULL;
+        NumberJoysticks = SDL_NumJoysticks();
       }
     }
   } break;
@@ -360,11 +400,11 @@ int main() {
   GlobalBackBuffer.BytesPerPixel = 4;
   AllocateBitmap(&GlobalBackBuffer);
 
-  Input_Replay_State *InputReplayState = {};
-  InputReplayState->FileName = "test.rpf";
+  Input_Replay_State InputReplayState = {};
+  InputReplayState.FileName = "test.rpf";
 
   Game_Input GameInput = {};
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
     fprintf(stderr, "failed to init SDL\n");
     return 1;
   }
@@ -389,13 +429,13 @@ int main() {
       NULL, 0, &AudioDesired, &AudioObtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
   SDL_GameController *GameController = {};
-  int NumberJoysticks = SDL_NumJoysticks();
+  i32 NumberJoysticks = SDL_NumJoysticks();
   if (NumberJoysticks > 0) {
     GameController = SDL_GameControllerOpen(0);
   }
 
   if (Window == NULL || Renderer == NULL || AudioDeviceID == 0 ||
-      GameController == NULL || NumberJoysticks < 0) {
+      NumberJoysticks < 0) {
     fprintf(stderr, "[ERR] Failed initilization: %s\n", SDL_GetError());
     return 1;
   }
@@ -433,7 +473,8 @@ int main() {
     SDL_Event Event;
     while (SDL_PollEvent(&Event)) {
       HandleEvent(&GlobalBackBuffer, Window, Renderer, &Texture, Event,
-                  AudioDeviceID, GameState, InputReplayState);
+                  AudioDeviceID, GameState, &InputReplayState, &GameController,
+                  NumberJoysticks);
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
 
@@ -445,13 +486,12 @@ int main() {
       MapKeyboardToInput(KeyboardState, &GameInput);
       GameState = (Game_State *)Memory.PermanentStorage;
       if (GameState->Playback) {
-        GameInput = PlaybackInput(InputReplayState);
+        GameInput = PlaybackInput(GameState, &InputReplayState);
       }
       GameCode.Update(&Memory, &GlobalBackBuffer, &GameInput);
       if (GameState->Recording) {
-        RecordInput(InputReplayState, &GameInput);
+        RecordInput(&InputReplayState, &GameInput);
       }
-      SDL_GameControllerClose(GameController);
     }
 
     u64 EndCounter = SDL_GetPerformanceCounter();
