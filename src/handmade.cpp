@@ -81,14 +81,14 @@ extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
     GameState->PlayerX = Buffer->Height / 2;
     GameState->PlayerY = Buffer->Width / 2;
 
+    GameState->AudioPause = true;
+
     GameState->SamplesPerSecond = 48000;
     GameState->ToneHz = 100.0f;
 
     Memory->IsInitialised = true;
   }
-  if (!GameState->GlobalPause) {
-    GameRender(GameState, Buffer);
-    PlayerRender(GameState, Buffer);
-    GameMovement(GameState, GameInput);
-  }
+  GameRender(GameState, Buffer);
+  PlayerRender(GameState, Buffer);
+  GameMovement(GameState, GameInput);
 }

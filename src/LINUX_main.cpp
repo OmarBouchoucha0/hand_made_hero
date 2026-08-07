@@ -426,6 +426,11 @@ int main() {
   }
 
   Game_State *GameState = {};
+  GameState = (Game_State *)Memory.PermanentStorage;
+  GameState->GlobalPause = false;
+  GameState->AudioPause = true;
+  GameState->Recording = false;
+  GameState->Playback = false;
 
   const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
@@ -440,7 +445,7 @@ int main() {
   AllocateBitmap(&GlobalBackBuffer);
 
   Input_Replay_State InputReplayState = {};
-  InputReplayState.FileName = "./temp/test.rpf";
+  InputReplayState.FileName = "./temp/loop.rpf";
 
   Game_Input GameInput = {};
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
@@ -523,6 +528,10 @@ int main() {
                   NumberJoysticks);
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
+
+    if (GameState->GlobalPause) {
+      continue;
+    }
 
     if (GameCode.IsValid) {
       GameInput = {};
