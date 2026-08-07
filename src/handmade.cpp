@@ -86,7 +86,9 @@ extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
 
     Memory->IsInitialised = true;
   }
-  GameRender(GameState, Buffer);
-  PlayerRender(GameState, Buffer);
-  GameMovement(GameState, GameInput);
+  if (!GameState->GlobalPause) {
+    GameRender(GameState, Buffer);
+    PlayerRender(GameState, Buffer);
+    GameMovement(GameState, GameInput);
+  }
 }

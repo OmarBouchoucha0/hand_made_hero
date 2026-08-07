@@ -100,7 +100,7 @@ struct Audio_State {
 #if HANDMADE_INTERNAL
 typedef struct {
   void *Memory;
-  u32 MemorySize;
+  u32 MemorySize; // NOTE: u32 only supports up to 4gb files
 } DEBUG_File_Slice;
 
 #define FILE_WRITE_FAIL 0x0000
@@ -111,10 +111,8 @@ typedef i32 FILE_WRITE_STATUS;
 #define FILE_READ_SUCCES 0x0001
 typedef i32 FILE_READ_STATUS;
 
-// NOTE: return NULL on failure
 DEBUG_File_Slice DEBUGPlatformReadEntireFile(const char *FileName);
 void DEBUGPlatformFreeEntireFile(DEBUG_File_Slice *File);
-// NOTE: u64 only supports up to 4gb files
 FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
                                                DEBUG_File_Slice *File);
 FILE_WRITE_STATUS DEBUGPlatformAppendToFile(const char *FileName, void *Memory);

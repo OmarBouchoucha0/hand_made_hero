@@ -113,8 +113,8 @@ FILE_WRITE_STATUS DEBUGPlatformWriteEntireFile(const char *FileName,
   return FILE_WRITE_SUCCES;
 }
 
-SDL_RWops *DEBUGPlatformGetAppendFileHandle(const char *FileName) {
-  SDL_RWops *Handle = SDL_RWFromFile(FileName, "a");
+SDL_RWops *DEBUGPlatformGetWriteFileHandle(const char *FileName) {
+  SDL_RWops *Handle = SDL_RWFromFile(FileName, "wb");
   if (!Handle) {
     fprintf(stderr, "[ERR] Failed to open file for writing: %s\n",
             SDL_GetError());
@@ -173,6 +173,7 @@ internal void UpdateWindow(Bitmap_Buffer Buffer, SDL_Renderer *renderer,
 }
 //-----------------------Recording------------------------------
 struct Input_Replay_State {
+  Game_State *GameState;
   const char *FileName;
   SDL_RWops *InputRecordingFileHanlde;
   u64 InputRecordingIndex;
@@ -187,7 +188,11 @@ internal void BeginInputRecording(Game_State *GameState,
     GameState->Recording = true;
     InputReplayState->InputRecordingIndex = 0;
     InputReplayState->InputRecordingFileHanlde =
-        DEBUGPlatformGetAppendFileHandle(InputReplayState->FileName);
+        DEBUGPlatformGetWriteFileHandle(InputReplayState->FileName);
+    InputReplayState->GameState = GameState;
+    DEBUGPlatformAppendToFile(InputReplayState->InputRecordingFileHanlde,
+                              (void *)InputReplayState->GameState,
+                              sizeof(Game_State));
   }
 }
 
@@ -211,10 +216,18 @@ internal void BeginInputPlayback(Game_State *GameState,
                                  Input_Replay_State *InputReplayState) {
 
   if (GameState->Playback == false) {
-    GameState->Playback = true;
     InputReplayState->InputPlaybackIndex = 0;
     InputReplayState->InputPlaybackFileHanlde =
         DEBUGPlatformGetReadFileHandle(InputReplayState->FileName);
+
+    u64 ChunksRead = SDL_RWread(InputReplayState->InputPlaybackFileHanlde,
+                                GameState, sizeof(Game_State), 1);
+    GameState->Recording = false;
+    GameState->Playback = true;
+    if (ChunksRead <= 0) {
+      fprintf(stderr, "[ERR] Game State read for loopback failed: %s\n",
+              SDL_GetError());
+    }
   }
 }
 
@@ -229,7 +242,8 @@ internal void StopInputPlayback(Game_State *GameState,
 internal Game_Input PlaybackInput(Game_State *GameState,
                                   Input_Replay_State *InputReplayState) {
   Game_Input GameInput = {};
-  i64 Offset = InputReplayState->InputPlaybackIndex * sizeof(Game_Input);
+  i64 Offset = InputReplayState->InputPlaybackIndex * sizeof(Game_Input) +
+               sizeof(Game_State);
   i64 Result = SDL_RWseek(InputReplayState->InputPlaybackFileHanlde, Offset,
                           RW_SEEK_SET);
   if (Result == -1) {
@@ -241,7 +255,7 @@ internal Game_Input PlaybackInput(Game_State *GameState,
                                 &GameInput, sizeof(Game_Input), 1);
   } else {
     StopInputPlayback(GameState, InputReplayState);
-    InputReplayState->InputRecordingIndex = 0;
+    BeginInputPlayback(GameState, InputReplayState);
     return GameInput;
   }
   ++InputReplayState->InputPlaybackIndex;
@@ -413,7 +427,6 @@ int main() {
 
   Game_State *GameState = {};
 
-  // TODO: hardcoded path
   const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
   GameCode.LastWriteTime = GetLastWriteTime(GameLibPath);
@@ -427,7 +440,7 @@ int main() {
   AllocateBitmap(&GlobalBackBuffer);
 
   Input_Replay_State InputReplayState = {};
-  InputReplayState.FileName = "./assets/test.rpf";
+  InputReplayState.FileName = "./temp/test.rpf";
 
   Game_Input GameInput = {};
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
@@ -495,9 +508,11 @@ int main() {
       UnloadGameCode(&GameCode);
       GameCode = LoadGameCode(GameLibPath);
       GameCode.LastWriteTime = NewWriteTime;
-      // TODO: this is beign read by sdl's audio thread so updating it may cause
-      // a race condition
+      // NOTE: we lock the audio beacuse we dont want to get a race condition
+      // when the audio callback reads from the same memory
+      SDL_LockAudioDevice(AudioDeviceID);
       GameLogicAndState.GameCode = GameCode;
+      SDL_UnlockAudioDevice(AudioDeviceID);
       printf("[INFO] game code reloaded\n");
     }
 
@@ -542,6 +557,7 @@ int main() {
       }
     } else {
       // TODO: frame missed
+      printf("[INFO] frame missed");
     }
 
     f64 VSyncFps = 1000.0f / ElapsedMS;
@@ -549,10 +565,10 @@ int main() {
 
     u64 EndCycle = __rdtsc();
     u64 TotalCyclesPerFrame = EndCycle - StartCycle;
-    printf("[INFO] UNCAPPED FPS: %f VSYNC FPS: %f Delay : %f ms MCycles per "
-           "frame: "
-           "%lu  \n",
-           RealFps, VSyncFps, DelayMS, TotalCyclesPerFrame / (1000 * 1000));
+    // printf("[INFO] UNCAPPED FPS: %f VSYNC FPS: %f Delay : %f ms MCycles per "
+    //        "frame: "
+    //        "%lu  \n",
+    //        RealFps, VSyncFps, DelayMS, TotalCyclesPerFrame / (1000 * 1000));
   }
   // NOTE: not sure if the quit is nessecary since the os does the cleanup but
   // its here for now

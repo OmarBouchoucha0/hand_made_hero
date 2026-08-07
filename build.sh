@@ -3,6 +3,7 @@ set -e
 
 mkdir -p ./out
 mkdir -p ./assets
+mkdir -p ./temp
 
 g++ -g -O0 -Wall -Wextra -shared -fPIC -DHANDMADE_SLOW=1 -DHANDMADE_INTERNAL=1 -o \
     ./out/handmade_temp.so ./src/handmade.cpp $(pkg-config --cflags --libs sdl2) -lm
