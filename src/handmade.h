@@ -18,12 +18,21 @@
 #define local_persist static
 #define internal static
 #define PI 3.14159265358979323846f
-#define AUDIO_S16 0x8010 /**< Signed 16-bit samples */
+#define GameResX 960
+#define GameResY 540
 
+#define TileWidth 40
+#define TileHeight 40
+
+#define TileRows 9
+#define TileCols 17
+
+#define AUDIO_S16 0x8010 /**< Signed 16-bit samples */
 #define AUDIO_FREQ 48000
 #define AUDIO_FORMAT AUDIO_S16
 #define AUDIO_CHANNELS 2
 #define AUDIO_SAMPLES Kilobytes(4)
+
 
 typedef float f32;
 typedef double f64;
@@ -39,6 +48,8 @@ typedef int16_t i16;
 typedef int8_t i8;
 
 typedef i32 b32;
+
+typedef u32 RGB;
 
 #define Kilobytes(x) ((u64)(x) * 1024)
 #define Megabytes(x) ((u64)(x) * 1024 * 1024)
@@ -66,8 +77,9 @@ struct Game_State {
     i32 YOffset;
   };
   struct {
-    i32 PlayerX;
-    i32 PlayerY;
+    f32 PlayerX;
+    f32 PlayerY;
+    f32 DtPerFrame;
   };
   struct {
     i32 SamplesPerSecond;
@@ -121,8 +133,14 @@ FILE_WRITE_STATUS DEBUGPlatformAppendToFile(const char *FileName, void *Memory);
 
 internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);
 internal void PlayerRender(Game_State *GameState, Bitmap_Buffer *Buffer);
+internal inline i32 RoundF32ToI32(f32 x);
+internal inline i32 RoundF32ToU32(f32 x);
+internal void DrawRectangle(Bitmap_Buffer *Buffer, f32 MaxX, f32 MaxY, f32 MinX,
+                            f32 MinY, u32 Color);
+internal void ClearScreen(Bitmap_Buffer *Buffer);
 extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
 internal void GameMovement(Game_State *GameState, Game_Input *GameInput);
+internal void GameInit(Game_Memory *Memory, Bitmap_Buffer *Buffer);
 extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
                            Game_Input *GameInput);
 

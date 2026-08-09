@@ -10,8 +10,8 @@
 #include <SDL2/SDL.h>
 
 global_variable b32 Running = true;
-global_variable i32 WINDOW_WIDTH = 1600;
-global_variable i32 WINDOW_HEIGHT = 900;
+global_variable i32 WINDOW_WIDTH = GameResX;
+global_variable i32 WINDOW_HEIGHT = GameResY;
 
 #if !HANDMADE_INTERNAL
 internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
@@ -140,8 +140,8 @@ void DEBUGPlatformCloseFile(SDL_RWops *Handle) { SDL_RWclose(Handle); }
 
 //------------------------utils-----------------------------------------
 internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
-  Buffer->Width = WINDOW_WIDTH;
-  Buffer->Height = WINDOW_HEIGHT;
+  Buffer->Width = GameResX;
+  Buffer->Height = GameResY;
   Buffer->MemorySize = Buffer->Width * Buffer->Height * Buffer->BytesPerPixel;
 
   // TODO: use the Memory of the program instead of a new alloc
@@ -154,7 +154,6 @@ internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
 
 internal void ResizeDIBSection(Bitmap_Buffer *Buffer, SDL_Renderer *Renderer,
                                SDL_Texture **Texture) {
-  AllocateBitmap(Buffer);
   if (*Texture) {
     SDL_DestroyTexture(*Texture);
   }
@@ -425,13 +424,6 @@ int main() {
     return 1;
   }
 
-  Game_State *GameState = {};
-  GameState = (Game_State *)Memory.PermanentStorage;
-  GameState->GlobalPause = false;
-  GameState->AudioPause = true;
-  GameState->Recording = false;
-  GameState->Playback = false;
-
   const char *GameLibPath = "./out/handmade.so";
   Game_Code GameCode = LoadGameCode(GameLibPath);
   GameCode.LastWriteTime = GetLastWriteTime(GameLibPath);
@@ -448,6 +440,8 @@ int main() {
   InputReplayState.FileName = "./temp/loop.rpf";
 
   Game_Input GameInput = {};
+  Game_State *GameState = (Game_State *)Memory.PermanentStorage;
+
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) !=
       0) {
     fprintf(stderr, "failed to init SDL\n");
@@ -499,6 +493,10 @@ int main() {
   i32 GameRefreshRate = MonitorRefreshRate / 1;
   f32 TargetMilliSecondsPerFrame = 1000.0f / (f32)GameRefreshRate;
   u64 PrevTickTime = SDL_GetTicks64();
+  // NOTE: we need a constant dt for the movment so even if the frames rates
+  //
+  // changes we still update at a constant rate
+  GameState->DtPerFrame = 1.0f / (f32)GameRefreshRate;
 
   while (Running) {
     u64 CurrentTickTime = SDL_GetTicks64();
@@ -529,17 +527,12 @@ int main() {
     }
     UpdateWindow(GlobalBackBuffer, Renderer, Texture);
 
-    if (GameState->GlobalPause) {
-      continue;
-    }
-
     if (GameCode.IsValid) {
       GameInput = {};
       if (NumberJoysticks > 0) {
         MapJoystickToInput(GameController, &GameInput);
       }
       MapKeyboardToInput(KeyboardState, &GameInput);
-      GameState = (Game_State *)Memory.PermanentStorage;
       if (GameState->Playback) {
         GameInput = PlaybackInput(GameState, &InputReplayState);
       }
@@ -565,8 +558,7 @@ int main() {
             ((f32)(EndCounter - StartCounter) / (f32)Frequency) * 1000.0f;
       }
     } else {
-      // TODO: frame missed
-      printf("[INFO] frame missed");
+      printf("[INFO] frame missed\n");
     }
 
     f64 VSyncFps = 1000.0f / ElapsedMS;
@@ -574,10 +566,10 @@ int main() {
 
     u64 EndCycle = __rdtsc();
     u64 TotalCyclesPerFrame = EndCycle - StartCycle;
-    // printf("[INFO] UNCAPPED FPS: %f VSYNC FPS: %f Delay : %f ms MCycles per "
-    //        "frame: "
-    //        "%lu  \n",
-    //        RealFps, VSyncFps, DelayMS, TotalCyclesPerFrame / (1000 * 1000));
+    printf("[INFO] UNCAPPED FPS: %f VSYNC FPS: %f Delay : %f ms MCycles per "
+           "frame: "
+           "%lu  \n",
+           RealFps, VSyncFps, DelayMS, TotalCyclesPerFrame / (1000 * 1000));
   }
   // NOTE: not sure if the quit is nessecary since the os does the cleanup but
   // its here for now
