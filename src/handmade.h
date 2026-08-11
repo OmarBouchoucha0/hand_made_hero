@@ -72,15 +72,15 @@ struct Game_Memory {
 
 struct Tile_Map {
   u32 Map[TILE_ROWS_COUNT][TILE_COLS_COUNT];
-  f32 PaddingX;
-  f32 PaddingY;
-  f32 MinX;
-  f32 MinY;
-  f32 MaxX;
-  f32 MaxY;
 };
 
 struct World_Map {
+  f32 TileMapPaddingX;
+  f32 TileMapPaddingY;
+  f32 TileMapMinX;
+  f32 TileMapMinY;
+  f32 TileMapMaxX;
+  f32 TileMapMaxY;
   u32 TileMapCountX;
   u32 TileMapCountY;
   Tile_Map *TileMaps;
@@ -161,12 +161,12 @@ internal void DrawRectangleOutline(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX,
                                    f32 MinY, f32 MaxY, RGB Color);
 internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
                                              i32 TileY);
-internal inline b32 TileMapBoundsCheckTop(Tile_Map TileMap, f32 Y);
-internal inline b32 TileMapBoundsCheckBottom(Tile_Map TileMap, f32 Y);
-internal inline b32 TileMapBoundsCheckLeft(Tile_Map TileMap, f32 X);
-internal inline b32 TileMapBoundsCheckRight(Tile_Map TileMap, f32 X);
-internal void DrawTileMap(Bitmap_Buffer *Buffer, Tile_Map TileMap);
-internal b32 TileMapCollision(f32 X, f32 Y, Tile_Map TileMap);
+internal inline b32 TileMapBoundsCheckTop(World_Map *WorldMap, f32 Y);
+internal inline b32 TileMapBoundsCheckBottom(World_Map *WorldMap, f32 Y);
+internal inline b32 TileMapBoundsCheckLeft(World_Map *WorldMap, f32 X);
+internal inline b32 TileMapBoundsCheckRight(World_Map *WorldMap, f32 X);
+internal void DrawTileMap(Bitmap_Buffer *Buffer,World_Map *WorldMap, Tile_Map TileMap );
+internal b32 TileMapCollision(f32 X, f32 Y, Tile_Map TileMap,World_Map *WorldMap);
 internal void DrawPlayer(Game_State *GameState, Bitmap_Buffer *Buffer);
 internal void ClearScreen(Bitmap_Buffer *Buffer);
 extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
