@@ -10,8 +10,8 @@
 #include <SDL2/SDL.h>
 
 global_variable b32 Running = true;
-global_variable i32 WINDOW_WIDTH = GameResX;
-global_variable i32 WINDOW_HEIGHT = GameResY;
+global_variable i32 WINDOW_WIDTH = GAME_RES_X;
+global_variable i32 WINDOW_HEIGHT = GAME_RES_Y;
 
 #if !HANDMADE_INTERNAL
 internal int BaseAddressCallback(struct dl_phdr_info *info, size_t size,
@@ -140,8 +140,8 @@ void DEBUGPlatformCloseFile(SDL_RWops *Handle) { SDL_RWclose(Handle); }
 
 //------------------------utils-----------------------------------------
 internal void AllocateBitmap(Bitmap_Buffer *Buffer) {
-  Buffer->Width = GameResX;
-  Buffer->Height = GameResY;
+  Buffer->Width = WINDOW_WIDTH;
+  Buffer->Height = WINDOW_HEIGHT;
   Buffer->MemorySize = Buffer->Width * Buffer->Height * Buffer->BytesPerPixel;
 
   // TODO: use the Memory of the program instead of a new alloc
