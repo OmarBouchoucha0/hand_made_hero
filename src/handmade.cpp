@@ -2,70 +2,43 @@
 #include <cstring>
 
 // TODO: add this ti the memory of hte program
-global_variable u32 InitialTileMap[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-};
-global_variable u32 SecondTileMap[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
-    {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-};
-global_variable Tile_Map TileMap = {};
 
-internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer,
-                         Tile_Map TileMap) {
+internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer) {
   ClearScreen(Buffer);
-  DrawTileMap(Buffer, TileMap);
+  DrawTileMap(Buffer, GetCurrentTileMap(GameState));
   DrawPlayer(GameState, Buffer);
 }
 
-internal u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX, i32 TileY) {
+internal Tile_Map GetCurrentTileMap(Game_State *GameState) {
+
+  u32 Index =
+      GameState->MapY * GameState->WorldMap.TileMapCountX + GameState->MapX;
+
+  return GameState->WorldMap.TileMaps[Index];
+}
+
+internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
+                                             i32 TileY) {
   return TileMap.Map[TileY][TileX];
 }
-internal b32 TileMapBoundsCheckTop(Tile_Map TileMap, f32 Y) {
-  if (Y < TileMap.MinY) {
-    return true;
-  }
-  return false;
+
+internal inline b32 TileMapBoundsCheckTop(Tile_Map TileMap, f32 Y) {
+  return (Y < TileMap.MinY);
 }
 
-internal b32 TileMapBoundsCheckBottom(Tile_Map TileMap, f32 Y) {
-  if (Y >= TileMap.MaxY) {
-    return true;
-  }
-  return false;
+internal inline b32 TileMapBoundsCheckBottom(Tile_Map TileMap, f32 Y) {
+  return (Y >= TileMap.MaxY);
 }
 
-internal b32 TileMapBoundsCheckLeft(Tile_Map TileMap, f32 X) {
-  if (X < TileMap.MinX) {
-    return true;
-  }
-  return false;
+internal inline b32 TileMapBoundsCheckLeft(Tile_Map TileMap, f32 X) {
+  return (X < TileMap.MinX);
 }
 
-internal b32 TileMapBoundsCheckRight(Tile_Map TileMap, f32 X) {
-  if (X >= TileMap.MaxX) {
-    return true;
-  }
-  return false;
+internal inline b32 TileMapBoundsCheckRight(Tile_Map TileMap, f32 X) {
+  return (X >= TileMap.MaxX);
 }
 
 internal void DrawTileMap(Bitmap_Buffer *Buffer, Tile_Map TileMap) {
-
   for (u32 y = 0; y < TILE_ROWS_COUNT; ++y) {
     for (u32 x = 0; x < TILE_COLS_COUNT; ++x) {
       f32 MinX = TileMap.PaddingX + (f32)(x * TILE_WIDTH);
@@ -200,8 +173,7 @@ internal b32 TileMapCollision(f32 X, f32 Y, Tile_Map TileMap) {
   return false;
 }
 
-internal void GameMovement(Game_State *GameState, Game_Input *GameInput,
-                           Tile_Map *TileMap) {
+internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
   f32 dx = 0.0f;
   f32 dy = 0.0f;
   f32 PlayerSpeed = 100.0f;
@@ -224,27 +196,30 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput,
   f32 NewPlayerY =
       GameState->PlayerY + GameState->DtPerFrame * dy * PlayerSpeed;
 
+  Tile_Map TileMap = GetCurrentTileMap(GameState);
   // i32 PlayerTileY =
   //     RoundF32ToI32((NewPlayerY - (f32)TileMap.PaddingY) / (f32)TILE_HEIGHT);
   // i32 PlayerTileX =
   //     RoundF32ToI32((NewPlayerX - (f32)TileMap.PaddingX) / (f32)TILE_WIDTH);
 
-  if (TileMapBoundsCheckTop(*TileMap, NewPlayerY)) {
-    GameState->PlayerY = TileMap->MaxY;
-    memcpy(TileMap->Map, InitialTileMap, sizeof(InitialTileMap));
+  if (TileMapBoundsCheckTop(TileMap, NewPlayerY)) {
+    GameState->PlayerY = TileMap.MaxY;
+    GameState->MapY -= 1;
     return;
   }
-  if (TileMapBoundsCheckBottom(*TileMap, NewPlayerY)) {
-    GameState->PlayerY = TileMap->MinY;
-    memcpy(TileMap->Map, SecondTileMap, sizeof(SecondTileMap));
+  if (TileMapBoundsCheckBottom(TileMap, NewPlayerY)) {
+    GameState->PlayerY = TileMap.MinY;
+    GameState->MapY += 1;
     return;
   }
-  if (TileMapBoundsCheckLeft(*TileMap, NewPlayerX)) {
-    GameState->PlayerX = TileMap->MaxX;
+  if (TileMapBoundsCheckLeft(TileMap, NewPlayerX)) {
+    GameState->PlayerX = TileMap.MaxX;
+    GameState->MapX -= 1;
     return;
   }
-  if (TileMapBoundsCheckRight(*TileMap, NewPlayerX)) {
-    GameState->PlayerX = TileMap->MinX;
+  if (TileMapBoundsCheckRight(TileMap, NewPlayerX)) {
+    GameState->PlayerX = TileMap.MinX;
+    GameState->MapX += 1;
     return;
   }
 
@@ -253,10 +228,10 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput,
   f32 right = NewPlayerX + GameState->PlayerWidth * 0.5f;
   f32 bottom = NewPlayerY + GameState->PlayerHeight * 0.5f;
 
-  if (!TileMapCollision(left, top, *TileMap) &&
-      !TileMapCollision(left, bottom, *TileMap) &&
-      !TileMapCollision(right, top, *TileMap) &&
-      !TileMapCollision(right, bottom, *TileMap)) {
+  if (!TileMapCollision(left, top, TileMap) &&
+      !TileMapCollision(left, bottom, TileMap) &&
+      !TileMapCollision(right, top, TileMap) &&
+      !TileMapCollision(right, bottom, TileMap)) {
     GameState->PlayerX = NewPlayerX;
     GameState->PlayerY = NewPlayerY;
   }
@@ -279,25 +254,22 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
     }
   }
 }
-void GameInit(Game_Memory *Memory, Tile_Map *TileMap) {
+void GameInit(Game_Memory *Memory) {
   Assert(sizeof(Game_State) <= Memory->PermanentStorageSize);
   Game_State *GameState = (Game_State *)Memory->PermanentStorage;
 
   if (!Memory->IsInitialised) {
-    memcpy(TileMap->Map, InitialTileMap, sizeof(InitialTileMap));
-
-    TileMap->PaddingX = 200;
-    TileMap->PaddingY = 200;
-    TileMap->MinX = TileMap->PaddingX;
-    TileMap->MinY = TileMap->PaddingY;
-    TileMap->MaxX = TileMap->MinX + (f32)(TILE_COLS_COUNT * TILE_WIDTH);
-    TileMap->MaxY = TileMap->MinY + (f32)(TILE_ROWS_COUNT * TILE_HEIGHT);
+    GameState->WorldMap.TileMapCountX = 2;
+    GameState->WorldMap.TileMapCountY = 2;
+    Tile_Map TileMap = GetCurrentTileMap(GameState);
     f32 CenterX =
-        (f32)((f32)(TILE_COLS_COUNT * TILE_WIDTH) / 2 + (f32)TileMap->PaddingX);
-    f32 CenterY = (f32)((f32)(TILE_ROWS_COUNT * TILE_HEIGHT) / 2 +
-                        (f32)TileMap->PaddingY);
+        (f32)((f32)(TILE_COLS_COUNT * TILE_WIDTH) / 2 + (f32)TileMap.PaddingX);
+    f32 CenterY =
+        (f32)((f32)(TILE_ROWS_COUNT * TILE_HEIGHT) / 2 + (f32)TileMap.PaddingY);
     GameState->PlayerX = CenterX;
     GameState->PlayerY = CenterY;
+    GameState->MapX = 0;
+    GameState->MapY = 0;
     GameState->PlayerHeight = 10;
     GameState->PlayerWidth = 10;
 
@@ -317,12 +289,87 @@ void GameInit(Game_Memory *Memory, Tile_Map *TileMap) {
 
 extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
                            Game_Input *GameInput) {
-
   Game_State *GameState = (Game_State *)Memory->PermanentStorage;
-  GameInit(Memory, &TileMap);
+
+  if (!Memory->IsInitialised) {
+
+    u32 TileMap00[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
+    u32 TileMap01[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
+
+    u32 TileMap10[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1},
+        {0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
+
+    u32 TileMap11[TILE_ROWS_COUNT][TILE_COLS_COUNT] = {
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
+        {0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    };
+
+    Tile_Map TileMap0 = {};
+    TileMap0.PaddingX = 200;
+    TileMap0.PaddingY = 200;
+    TileMap0.MinX = TileMap0.PaddingX;
+    TileMap0.MinY = TileMap0.PaddingY;
+    TileMap0.MaxX = TileMap0.MinX + (f32)(TILE_COLS_COUNT * TILE_WIDTH);
+    TileMap0.MaxY = TileMap0.MinY + (f32)(TILE_ROWS_COUNT * TILE_HEIGHT);
+
+    Tile_Map TileMap1 = TileMap0;
+    Tile_Map TileMap2 = TileMap0;
+    Tile_Map TileMap3 = TileMap0;
+
+    memcpy(TileMap0.Map, TileMap00, sizeof(TileMap00));
+    memcpy(TileMap1.Map, TileMap10, sizeof(TileMap10));
+    memcpy(TileMap2.Map, TileMap01, sizeof(TileMap01));
+    memcpy(TileMap3.Map, TileMap11, sizeof(TileMap11));
+
+    // TODO: Game memory instead of local persist
+    local_persist Tile_Map TileMaps[4] = {};
+    TileMaps[0] = TileMap0;
+    TileMaps[1] = TileMap1;
+    TileMaps[2] = TileMap2;
+    TileMaps[3] = TileMap3;
+    GameState->WorldMap.TileMaps = TileMaps;
+  }
+
+  GameInit(Memory);
 
   if (!GameState->GlobalPause) {
-    GameMovement(GameState, GameInput, &TileMap);
-    GameRender(GameState, Buffer, TileMap);
+    GameMovement(GameState, GameInput);
+    GameRender(GameState, Buffer);
   }
 }
