@@ -1,51 +1,25 @@
 #include "handmade.h"
+#include "handmade_intrinsics.h"
 
-internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer) {
-  ClearScreen(Buffer);
-  DrawTileMap(Buffer, &GameState->WorldMap, GetCurrentTileMap(GameState));
-  DrawPlayer(GameState, Buffer);
-}
-
-internal Tile_Map GetCurrentTileMap(Game_State *GameState) {
-
-  u32 Index =
-      GameState->MapY * GameState->WorldMap.TileMapCountX + GameState->MapX;
-
-  return GameState->WorldMap.TileMaps[Index];
-}
-
-internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
-                                             i32 TileY) {
-  return TileMap.Map[TileY][TileX];
-}
-
-internal inline b32 TileMapBoundsCheckTop(World_Map *WorldMap, f32 Y) {
-  return (Y < WorldMap->TileMapMinY);
-}
-
-internal inline b32 TileMapBoundsCheckBottom(World_Map *WorldMap, f32 Y) {
-  return (Y >= WorldMap->TileMapMaxY);
-}
-
-internal inline b32 TileMapBoundsCheckLeft(World_Map *WorldMap, f32 X) {
-  return (X < WorldMap->TileMapMinX);
-}
-
-internal inline b32 TileMapBoundsCheckRight(World_Map *WorldMap, f32 X) {
-  return (X >= WorldMap->TileMapMaxX);
-}
-
-internal void DrawTileMap(Bitmap_Buffer *Buffer, World_Map *WorldMap,
+//==========================Rendering==========================================
+internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState,
                           Tile_Map TileMap) {
   for (u32 y = 0; y < TILE_ROWS_COUNT; ++y) {
     for (u32 x = 0; x < TILE_COLS_COUNT; ++x) {
-      f32 MinX = WorldMap->TileMapPaddingX + (f32)(x * TILE_WIDTH);
-      f32 MinY = WorldMap->TileMapPaddingY + (f32)(y * TILE_HEIGHT);
-      f32 MaxX = (f32)(MinX + TILE_WIDTH);
-      f32 MaxY = (f32)(MinY + TILE_HEIGHT);
+      f32 MinX = GameState->WorldMap.TileMapPaddingX + (f32)(x * TILE_SIDE);
+      f32 MinY = GameState->WorldMap.TileMapPaddingY + (f32)(y * TILE_SIDE);
+      f32 MaxX = (f32)(MinX + TILE_SIDE);
+      f32 MaxY = (f32)(MinY + TILE_SIDE);
       u32 Color = 0x0000ff;
+      MinX *= GameState->MetersToPixels;
+      MinY *= GameState->MetersToPixels;
+      MaxX *= GameState->MetersToPixels;
+      MaxY *= GameState->MetersToPixels;
       if (GetTileMapValueUnchecked(TileMap, x, y) == 1) {
         Color = 0xffffff;
+      }
+      if (x == GameState->Pos.TileMapX && y == GameState->Pos.TileMapY) {
+        Color = 0xffff00;
       }
       DrawRectangleOutline(Buffer, MinX, MaxX, MinY, MaxY, Color);
     }
@@ -54,24 +28,50 @@ internal void DrawTileMap(Bitmap_Buffer *Buffer, World_Map *WorldMap,
 
 internal void DrawPlayer(Game_State *GameState, Bitmap_Buffer *Buffer) {
   u32 Color = 0xFF0000;
+  f32 HalfPlayerWidth = GameState->PlayerWidth / 2.0f;
+  f32 HalfPlayerHeight = GameState->PlayerHeight / 2.0f;
 
-  f32 MinX = GameState->PlayerX - GameState->PlayerWidth / 2.0f;
-  f32 MinY = GameState->PlayerY - GameState->PlayerHeight / 2.0f;
-  f32 MaxX = GameState->PlayerX + GameState->PlayerWidth / 2.0f;
-  f32 MaxY = GameState->PlayerY + GameState->PlayerHeight / 2.0f;
+  f32 X = GameState->Pos.PlayerX;
+  f32 Y = GameState->Pos.PlayerY;
+  f32 LeftOffset =
+      GameState->Pos.TileMapX * TILE_SIDE + GameState->WorldMap.TileMapPaddingX;
+  f32 TopOffset =
+      GameState->Pos.TileMapY * TILE_SIDE + GameState->WorldMap.TileMapPaddingY;
 
+  X += LeftOffset;
+  Y += TopOffset;
+
+  f32 MinX = X - HalfPlayerWidth;
+  f32 MaxX = X + HalfPlayerWidth;
+  f32 MinY = Y - HalfPlayerHeight;
+  f32 MaxY = Y + HalfPlayerHeight;
+
+  MinX *= GameState->MetersToPixels;
+  MinY *= GameState->MetersToPixels;
+  MaxX *= GameState->MetersToPixels;
+  MaxY *= GameState->MetersToPixels;
   DrawRectangle(Buffer, MinX, MaxX, MinY, MaxY, Color);
 }
 
-internal inline i32 RoundF32ToI32(f32 x) {
-  if (x > 0) {
-    return (i32)(x + 0.5f);
-  }
-  return (i32)(x - 0.5f);
+internal void DrawScreenBorder(Bitmap_Buffer *Buffer) {
+  u32 Color = 0x0f0f0f;
+  f32 MinX = 10;
+  f32 MaxX = GAME_RES_X - 10;
+  f32 MinY = 10;
+  f32 MaxY = GAME_RES_Y - 10;
+  DrawRectangleOutline(Buffer, MinX, MaxX, MinY, MaxY, Color);
 }
-internal inline u32 RoundF32ToU32(f32 x) { return (u32)(x + 0.5f); }
-internal inline i32 TruncateF32ToI32(f32 x) { return (i32)(x); }
-internal inline u32 TruncateF32ToU32(f32 x) { return (u32)(x); }
+
+internal void FromCanonPositionToRaw(Game_State *GameState, f32 *X, f32 *Y) {
+  f32 LeftOffset =
+      GameState->Pos.TileMapX * TILE_SIDE * GameState->MetersToPixels +
+      GameState->WorldMap.TileMapPaddingX;
+  f32 TopOffset =
+      GameState->Pos.TileMapY * TILE_SIDE * GameState->MetersToPixels +
+      GameState->WorldMap.TileMapPaddingY;
+  *X += LeftOffset;
+  *Y += TopOffset;
+}
 
 internal void DrawRectangle(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX, f32 MinY,
                             f32 MaxY, RGB Color) {
@@ -157,27 +157,90 @@ internal void ClearScreen(Bitmap_Buffer *Buffer) {
   DrawRectangle(Buffer, 0, Buffer->Width, 0, Buffer->Height, 0);
 }
 
-internal b32 TileMapCollision(f32 X, f32 Y, Tile_Map TileMap,
-                              World_Map *WorldMap) {
+internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer) {
+  ClearScreen(Buffer);
+  DrawScreenBorder(Buffer);
+  DrawTileMap(Buffer, GameState, GetCurrentTileMap(GameState));
+  DrawPlayer(GameState, Buffer);
+}
 
-  u32 PlayerTileX =
-      TruncateF32ToU32((X - WorldMap->TileMapPaddingX) / TILE_WIDTH);
-  u32 PlayerTileY =
-      TruncateF32ToU32((Y - WorldMap->TileMapPaddingX) / TILE_HEIGHT);
-  if (PlayerTileX >= TILE_COLS_COUNT || PlayerTileY >= TILE_ROWS_COUNT) {
-    return false;
-  }
+//==========================TileMap==========================================
+internal Tile_Map GetCurrentTileMap(Game_State *GameState) {
 
-  if (GetTileMapValueUnchecked(TileMap, PlayerTileX, PlayerTileY) == 1) {
+  u32 Index = GameState->Pos.WorldMapY * GameState->WorldMap.TileMapCountX +
+              GameState->Pos.WorldMapX;
+
+  return GameState->WorldMap.TileMaps[Index];
+}
+
+internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
+                                             i32 TileY) {
+  return TileMap.Map[TileY][TileX];
+}
+
+internal inline b32 TileMapBoundsCheckTop(Game_State *GameState, f32 X, f32 Y) {
+  return (GameState->Pos.TileMapY <= 0 && Y < 0);
+}
+
+internal inline b32 TileMapBoundsCheckBottom(Game_State *GameState, f32 X,
+                                             f32 Y) {
+  return (GameState->Pos.TileMapY >= (i32)TILE_ROWS_COUNT - 1.0f &&
+          Y > TILE_SIDE);
+}
+
+internal inline b32 TileMapBoundsCheckLeft(Game_State *GameState, f32 X,
+                                           f32 Y) {
+  return (GameState->Pos.TileMapX <= 0 && X < 0);
+}
+
+internal inline b32 TileMapBoundsCheckRight(Game_State *GameState, f32 X,
+                                            f32 Y) {
+  return (GameState->Pos.TileMapX >= (i32)TILE_COLS_COUNT - 1.0f &&
+          X > TILE_SIDE);
+}
+
+internal b32 TileMapCollision(Game_State *GameState, f32 Left, f32 Right,
+                              f32 Top, f32 Bottom) {
+
+  Tile_Map TileMap = GetCurrentTileMap(GameState);
+  if (GetTileMapValueUnchecked(TileMap, GameState->Pos.TileMapX,
+                               GameState->Pos.TileMapY) == 1) {
     return true;
   }
   return false;
 }
 
+internal void MovePlayer(Game_State *GameState, f32 *X, f32 *Y, f32 dx,
+                         f32 dy) {
+  f32 PlayerSpeed = PLAYER_SPEED;
+  f32 NewPlayerX =
+      GameState->Pos.PlayerX + GameState->DtPerFrame * dx * PlayerSpeed;
+  f32 NewPlayerY =
+      GameState->Pos.PlayerY + GameState->DtPerFrame * dy * PlayerSpeed;
+  if (NewPlayerX < 0) {
+    GameState->Pos.TileMapX -= 1;
+    NewPlayerX += (f32)TILE_SIDE;
+  }
+  if (NewPlayerX >= TILE_SIDE) {
+    GameState->Pos.TileMapX += 1;
+    NewPlayerX -= (f32)TILE_SIDE;
+  }
+  if (NewPlayerY < 0) {
+    GameState->Pos.TileMapY -= 1;
+    NewPlayerY += (f32)TILE_SIDE;
+  }
+  if (NewPlayerY >= TILE_SIDE) {
+    GameState->Pos.TileMapY += 1;
+    NewPlayerY -= (f32)TILE_SIDE;
+  }
+  *X = NewPlayerX;
+  *Y = NewPlayerY;
+}
+
+//==========================Movement==========================================
 internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
   f32 dx = 0.0f;
   f32 dy = 0.0f;
-  f32 PlayerSpeed = 100.0f;
   if (GameInput->Right) {
     dx += 1.0f;
   }
@@ -192,56 +255,79 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
   }
 
   // TODO: Horizontal speed will be sqrt(2)
-  f32 NewPlayerX =
-      GameState->PlayerX + GameState->DtPerFrame * dx * PlayerSpeed;
-  f32 NewPlayerY =
-      GameState->PlayerY + GameState->DtPerFrame * dy * PlayerSpeed;
+  f32 NewPlayerX = 0.0f;
+  f32 NewPlayerY = 0.0f;
+  MovePlayer(GameState, &NewPlayerX, &NewPlayerY, dx, dy);
 
+  f32 Left = NewPlayerX - (f32)GameState->PlayerWidth * 0.5f;
+  f32 Right = NewPlayerX + (f32)GameState->PlayerWidth * 0.5f;
+  f32 Top = NewPlayerY - (f32)GameState->PlayerHeight * 0.5f;
+  f32 Bottom = NewPlayerY + (f32)GameState->PlayerHeight * 0.5f;
+
+  i32 TileX = GameState->Pos.TileMapX;
+  i32 TileY = GameState->Pos.TileMapY;
   Tile_Map TileMap = GetCurrentTileMap(GameState);
-  // i32 PlayerTileY =
-  //     RoundF32ToI32((NewPlayerY - (f32)TileMap.PaddingY) / (f32)TILE_HEIGHT);
-  // i32 PlayerTileX =
-  //     RoundF32ToI32((NewPlayerX - (f32)TileMap.PaddingX) / (f32)TILE_WIDTH);
+  if (GetTileMapValueUnchecked(TileMap, GameState->Pos.TileMapX,
+                               GameState->Pos.TileMapY) == 0) {
+    if (Top >= 0 && Bottom < TILE_SIDE) {
+      GameState->Pos.PlayerY = NewPlayerY;
+    }
+    if (Left >= 0 && Right < TILE_SIDE) {
+      GameState->Pos.PlayerX = NewPlayerX;
+    }
 
-  if (TileMapBoundsCheckTop(&GameState->WorldMap, NewPlayerY) &&
-      GameState->MapY > 0) {
-    GameState->PlayerY = GameState->WorldMap.TileMapMaxY;
-    GameState->MapY -= 1;
-    return;
-  }
-  if (TileMapBoundsCheckBottom(&GameState->WorldMap, NewPlayerY) &&
-      GameState->MapY < (i32)(GameState->WorldMap.TileMapCountY - 1)) {
-    GameState->PlayerY = GameState->WorldMap.TileMapMinY;
-    GameState->MapY += 1;
-    return;
-  }
-  if (TileMapBoundsCheckLeft(&GameState->WorldMap, NewPlayerX) &&
-      GameState->MapX > 0) {
-    GameState->PlayerX = GameState->WorldMap.TileMapMaxX;
-    GameState->MapX -= 1;
-    return;
-  }
-  if (TileMapBoundsCheckRight(&GameState->WorldMap, NewPlayerX) &&
-      GameState->MapX < (i32)(GameState->WorldMap.TileMapCountX - 1)) {
-    GameState->PlayerX = GameState->WorldMap.TileMapMinX;
-    GameState->MapX += 1;
-    return;
+    if (Top < 0) {
+      TileX = GameState->Pos.TileMapX;
+      TileY = GameState->Pos.TileMapY - 1;
+      if (TileY >= 0 && GetTileMapValueUnchecked(TileMap, TileX, TileY) == 0) {
+        GameState->Pos.PlayerY = NewPlayerY;
+      }
+    }
+    if (Bottom >= TILE_SIDE) {
+      TileX = GameState->Pos.TileMapX;
+      TileY = GameState->Pos.TileMapY + 1;
+      if (TileY < TILE_ROWS_COUNT &&
+          GetTileMapValueUnchecked(TileMap, TileX, TileY) == 0) {
+        GameState->Pos.PlayerY = NewPlayerY;
+      }
+    }
+
+    if (Left < 0) {
+      TileX = GameState->Pos.TileMapX - 1;
+      TileY = GameState->Pos.TileMapY;
+      if (TileX >= 0 && GetTileMapValueUnchecked(TileMap, TileX, TileY) == 0) {
+        GameState->Pos.PlayerX = NewPlayerX;
+      }
+    }
+    if (Right >= TILE_SIDE) {
+      TileX = GameState->Pos.TileMapX + 1;
+      TileY = GameState->Pos.TileMapY;
+      if (TileX < TILE_COLS_COUNT &&
+          GetTileMapValueUnchecked(TileMap, TileX, TileY) == 0) {
+        GameState->Pos.PlayerX = NewPlayerX;
+      }
+    }
   }
 
-  f32 left = NewPlayerX - GameState->PlayerWidth * 0.5f;
-  f32 top = NewPlayerY - GameState->PlayerHeight * 0.5f;
-  f32 right = NewPlayerX + GameState->PlayerWidth * 0.5f;
-  f32 bottom = NewPlayerY + GameState->PlayerHeight * 0.5f;
-
-  if (!TileMapCollision(left, top, TileMap, &GameState->WorldMap) &&
-      !TileMapCollision(left, bottom, TileMap, &GameState->WorldMap) &&
-      !TileMapCollision(right, top, TileMap, &GameState->WorldMap) &&
-      !TileMapCollision(right, bottom, TileMap, &GameState->WorldMap)) {
-    GameState->PlayerX = NewPlayerX;
-    GameState->PlayerY = NewPlayerY;
+  if (TileY < 0) {
+    GameState->Pos.WorldMapY -= 1;
+    GameState->Pos.TileMapY = TILE_ROWS_COUNT - 1;
+  }
+  if (TileY >= TILE_ROWS_COUNT) {
+    GameState->Pos.WorldMapY += 1;
+    GameState->Pos.TileMapY = 0;
+  }
+  if (TileX < 0) {
+    GameState->Pos.WorldMapX -= 1;
+    GameState->Pos.TileMapX = TILE_COLS_COUNT - 1;
+  }
+  if (TileX >= TILE_COLS_COUNT) {
+    GameState->Pos.WorldMapX += 1;
+    GameState->Pos.TileMapX = 0;
   }
 }
 
+//==========================Sound==========================================
 extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   i16 right = 0;
   i16 left = 0;
@@ -249,7 +335,7 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
   f32 AngleIncrement =
       2.0f * PI * GameState->ToneHz / (f32)GameState->SamplesPerSecond;
   for (i32 i = 0; i < AudioState.SampleCount; i += 2) {
-    left = (i16)((f32)Amp * sinf(GameState->TSine));
+    left = (i16)((f32)Amp * Sin(GameState->TSine));
     right = left;
     *AudioState.SampleOut++ = left;
     *AudioState.SampleOut++ = right;
@@ -259,31 +345,38 @@ extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState) {
     }
   }
 }
+
 void GameInit(Game_Memory *Memory) {
   Assert(sizeof(Game_State) <= Memory->PermanentStorageSize);
   Game_State *GameState = (Game_State *)Memory->PermanentStorage;
 
   if (!Memory->IsInitialised) {
-    GameState->WorldMap.TileMapPaddingX = 200;
-    GameState->WorldMap.TileMapPaddingY = 200;
+
+    // TODO: change the mesurments in meters rather than in pixels
+    GameState->WorldMap.TileMapPaddingX = 5;
+    GameState->WorldMap.TileMapPaddingY = 5;
     GameState->WorldMap.TileMapMinX = GameState->WorldMap.TileMapPaddingX;
     GameState->WorldMap.TileMapMinY = GameState->WorldMap.TileMapPaddingY;
     GameState->WorldMap.TileMapMaxX =
-        GameState->WorldMap.TileMapMinX + (f32)(TILE_COLS_COUNT * TILE_WIDTH);
+        GameState->WorldMap.TileMapMinX + (f32)(TILE_COLS_COUNT * TILE_SIDE);
     GameState->WorldMap.TileMapMaxY =
-        GameState->WorldMap.TileMapMinY + (f32)(TILE_ROWS_COUNT * TILE_HEIGHT);
+        GameState->WorldMap.TileMapMinY + (f32)(TILE_ROWS_COUNT * TILE_SIDE);
     GameState->WorldMap.TileMapCountX = 2;
     GameState->WorldMap.TileMapCountY = 2;
-    f32 CenterX = (f32)((f32)(TILE_COLS_COUNT * TILE_WIDTH) / 2 +
-                        (f32)GameState->WorldMap.TileMapPaddingX);
-    f32 CenterY = (f32)((f32)(TILE_ROWS_COUNT * TILE_HEIGHT) / 2 +
-                        (f32)GameState->WorldMap.TileMapPaddingX);
-    GameState->PlayerX = CenterX;
-    GameState->PlayerY = CenterY;
-    GameState->MapX = 0;
-    GameState->MapY = 0;
-    GameState->PlayerHeight = 10;
-    GameState->PlayerWidth = 10;
+
+    f32 CenterX = TILE_SIDE / 2.0f;
+    f32 CenterY = TILE_SIDE / 2.0f;
+    i32 TileMapX = (i32)(TILE_COLS_COUNT / 2);
+    i32 TileMapY = (i32)(TILE_ROWS_COUNT / 2);
+    GameState->Pos.TileMapX = TileMapX;
+    GameState->Pos.TileMapY = TileMapY;
+    GameState->Pos.PlayerX = CenterX;
+    GameState->Pos.PlayerY = CenterY;
+
+    GameState->PlayerHeight = 0.5;
+    GameState->PlayerWidth = 0.5;
+
+    GameState->MetersToPixels = 25;
 
     GameState->AudioPause = true;
 
@@ -304,7 +397,7 @@ extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
   Game_State *GameState = (Game_State *)Memory->PermanentStorage;
 
   if (!Memory->IsInitialised) {
-  GameInit(Memory);
+    GameInit(Memory);
     Tile_Map TileMap0 = {{
         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},

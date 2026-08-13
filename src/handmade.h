@@ -21,11 +21,13 @@
 #define GAME_RES_X 960
 #define GAME_RES_Y 540
 
-#define TILE_WIDTH 30
-#define TILE_HEIGHT 30
+#define TILE_SIDE_PIXELS 30
+#define TILE_SIDE 1.0f
 
 #define TILE_ROWS_COUNT 9
 #define TILE_COLS_COUNT 17
+
+#define PLAYER_SPEED 10.0f
 
 #define AUDIO_FREQ 48000
 #define AUDIO_S16 0x8010 /**< Signed 16-bit samples */
@@ -85,13 +87,21 @@ struct World_Map {
   u32 TileMapCountY;
   Tile_Map *TileMaps;
 };
+struct Position {
+  // NOTE: world relative x and y
+  i32 WorldMapX;
+  i32 WorldMapY;
+  // NOTE: chunk relative x and y
+  i32 TileMapX;
+  i32 TileMapY;
+  // NOTE: tile relative x and y
+  f32 PlayerX;
+  f32 PlayerY;
+};
 
 struct Game_State {
   struct {
-    f32 PlayerX;
-    f32 PlayerY;
-    i32 MapX;
-    i32 MapY;
+    Position Pos;
     f32 PlayerHeight;
     f32 PlayerWidth;
     f32 DtPerFrame;
@@ -110,6 +120,7 @@ struct Game_State {
   };
   struct {
     World_Map WorldMap;
+    f32 MetersToPixels;
   };
 };
 
@@ -149,28 +160,35 @@ FILE_WRITE_STATUS DEBUGPlatformAppendToFile(const char *FileName, void *Memory);
 
 #endif
 
-internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);
-internal inline i32 RoundF32ToI32(f32 x);
-internal inline u32 RoundF32ToU32(f32 x);
-internal inline i32 TruncateF32ToI32(f32 x);
-internal inline u32 TruncateF32ToU32(f32 x);
-internal Tile_Map GetCurrentTileMap(Game_State *GameState);
-internal void DrawRectangle(Bitmap_Buffer *Buffer, f32 MaxX, f32 MaxY, f32 MinX,
-                            f32 MinY, u32 Color);
+//==========================Rendering==========================================
+internal void DrawRectangle(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX, f32 MinY,
+                            f32 MaxY, RGB Color);
 internal void DrawRectangleOutline(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX,
                                    f32 MinY, f32 MaxY, RGB Color);
-internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
-                                             i32 TileY);
-internal inline b32 TileMapBoundsCheckTop(World_Map *WorldMap, f32 Y);
-internal inline b32 TileMapBoundsCheckBottom(World_Map *WorldMap, f32 Y);
-internal inline b32 TileMapBoundsCheckLeft(World_Map *WorldMap, f32 X);
-internal inline b32 TileMapBoundsCheckRight(World_Map *WorldMap, f32 X);
-internal void DrawTileMap(Bitmap_Buffer *Buffer,World_Map *WorldMap, Tile_Map TileMap );
-internal b32 TileMapCollision(f32 X, f32 Y, Tile_Map TileMap,World_Map *WorldMap);
+internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState,
+                          Tile_Map TileMap);
 internal void DrawPlayer(Game_State *GameState, Bitmap_Buffer *Buffer);
 internal void ClearScreen(Bitmap_Buffer *Buffer);
-extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
+internal void DrawScreenBorder(Bitmap_Buffer *Buffer);
+internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);
+//==========================TileMap==========================================
+internal Tile_Map GetCurrentTileMap(Game_State *GameState);
+internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
+                                             i32 TileY);
+internal inline b32 TileMapBoundsCheckTop(Game_State *GameState, f32 X, f32 Y);
+internal inline b32 TileMapBoundsCheckBottom(Game_State *GameState, f32 X,
+                                             f32 Y);
+internal inline b32 TileMapBoundsCheckLeft(Game_State *GameState, f32 X, f32 Y);
+internal inline b32 TileMapBoundsCheckRight(Game_State *GameState, f32 X,
+                                            f32 Y);
+internal b32 TileMapCollision(Game_State *GameState, f32 Left, f32 Right,
+                              f32 Top, f32 Bottom);
+//==========================Movement==========================================
+internal void FromCanonPositionToRaw(Game_State *GameState, f32 *X, f32 *Y);
 internal void GameMovement(Game_State *GameState, Game_Input *GameInput);
+//==========================Sound==========================================
+extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
+//==========================Update==========================================
 void GameInit(Game_Memory *Memory);
 extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
                            Game_Input *GameInput);
