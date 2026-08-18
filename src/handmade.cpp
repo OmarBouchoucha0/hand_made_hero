@@ -20,7 +20,7 @@ internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState) {
       }
       Tile_Position TilePosition = FromCanonPosToTilePos(GameState);
       if (TilePosition.ChunkRelX == x &&
-          TilePosition.ChunkRelY == (TILE_COLS_COUNT - 1 - y)) {
+          TilePosition.ChunkRelY == TILE_ROWS_COUNT - y - 1) {
         Color = 0xff00ff;
       }
       DrawRectangleOutline(Buffer, MinX, MaxX, MinY, MaxY, Color);
@@ -35,7 +35,7 @@ internal void DrawPlayer(Game_State *GameState, Bitmap_Buffer *Buffer) {
   f32 HalfPlayerHeight =
       GameState->PlayerHeight / 2.0f * GameState->MetersToPixels;
 
-  Raw_Position RawPosition = FromCanonPosToRawPos(GameState, Buffer);
+  Raw_Position RawPosition = FromCanonPosToRawPos(GameState);
 
   f32 MinX = RawPosition.X - HalfPlayerWidth;
   f32 MaxX = RawPosition.X + HalfPlayerWidth;
@@ -54,16 +54,21 @@ internal void DrawScreenBorder(Bitmap_Buffer *Buffer) {
   DrawRectangleOutline(Buffer, MinX, MaxX, MinY, MaxY, Color);
 }
 
-internal Raw_Position FromCanonPosToRawPos(Game_State *GameState,
-                                           Bitmap_Buffer *Buffer) {
+internal Raw_Position FromCanonPosToRawPos(Game_State *GameState) {
   Raw_Position RawPosition = {};
-  RawPosition.X = (GameState->Pos.TileX * TILE_SIDE + GameState->Pos.TileRelX +
-                   GameState->WorldMap.TileMapPaddingX) *
-                  GameState->MetersToPixels;
-  RawPosition.Y = (GameState->Pos.TileY * TILE_SIDE + GameState->Pos.TileRelY +
-                   GameState->WorldMap.TileMapPaddingY) *
-                  GameState->MetersToPixels;
-  RawPosition.Y = (f32)Buffer->Height - RawPosition.Y;
+  Tile_Position TilePosition = FromCanonPosToTilePos(GameState);
+  RawPosition.X =
+      (TilePosition.ChunkRelX * TILE_SIDE + GameState->Pos.TileRelX +
+       GameState->WorldMap.TileMapPaddingX) *
+      GameState->MetersToPixels;
+  RawPosition.Y =
+      (TilePosition.ChunkRelY * TILE_SIDE + GameState->Pos.TileRelY +
+       GameState->WorldMap.TileMapPaddingY) *
+      GameState->MetersToPixels;
+  f32 MaxY =
+      GameState->WorldMap.TileMapPaddingY * GameState->MetersToPixels * 2.0f +
+      (f32)TILE_ROWS_COUNT * TILE_SIDE * GameState->MetersToPixels;
+  RawPosition.Y = MaxY - RawPosition.Y;
   return RawPosition;
 }
 
@@ -226,54 +231,65 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
       GameState->Pos.TileRelY + GameState->DtPerFrame * dy * PlayerSpeed;
 
   Tile_Position TilePosition = FromCanonPosToTilePos(GameState);
+  i32 NewTileX = TilePosition.ChunkRelX;
+  i32 NewTileY = TilePosition.ChunkRelY;
+  i32 ChunkX = TilePosition.ChunkX;
+  i32 ChunkY = TilePosition.ChunkY;
+
   if (NewPlayerX < 0) {
-    GameState->Pos.TileX -= 1;
+    NewTileX -= 1;
     NewPlayerX += (f32)TILE_SIDE;
   }
   if (NewPlayerX >= TILE_SIDE) {
-    GameState->Pos.TileX += 1;
+    NewTileX += 1;
     NewPlayerX -= (f32)TILE_SIDE;
   }
   if (NewPlayerY < 0) {
-    GameState->Pos.TileY -= 1;
+    NewTileY -= 1;
     NewPlayerY += (f32)TILE_SIDE;
   }
   if (NewPlayerY >= TILE_SIDE) {
-    GameState->Pos.TileY += 1;
+    NewTileY += 1;
     NewPlayerY -= (f32)TILE_SIDE;
   }
 
-  GameState->Pos.TileRelX = NewPlayerX;
-  GameState->Pos.TileRelY = NewPlayerY;
+  f32 CenterX = TILE_SIDE / 2.0f;
+  f32 CenterY = TILE_SIDE / 2.0f;
 
-  // f32 CenterX = TILE_SIDE / 2.0f;
-  // f32 CenterY = TILE_SIDE / 2.0f;
-  //
-  // if (TilePosition.ChunkRelY <= 0 && NewPlayerY >= TILE_SIDE) {
-  //   GameState->Pos.TileY = ((GameState->Pos.TileY >> 8) - 1) << 8;
-  //   GameState->Pos.TileY |= TILE_ROWS_COUNT - 1;
-  //   NewPlayerX = CenterX;
-  //   NewPlayerY = CenterY;
-  // }
-  // if ((TilePosition.ChunkRelY >= TILE_ROWS_COUNT - 1) && NewPlayerY < 0) {
-  //   GameState->Pos.TileY = ((GameState->Pos.TileY >> 8) + 1) << 8;
-  //   GameState->Pos.TileY |= (0) & 0xFF;
-  //   NewPlayerX = CenterX;
-  //   NewPlayerY = CenterY;
-  // }
-  // if (TilePosition.ChunkRelX <= 0 && NewPlayerX < 0) {
-  //   GameState->Pos.TileX = ((GameState->Pos.TileX >> 8) - 1) << 8;
-  //   GameState->Pos.TileX |= (TILE_COLS_COUNT - 1) & 0xFF;
-  //   NewPlayerX = CenterX;
-  //   NewPlayerY = CenterY;
-  // }
-  // if ((TilePosition.ChunkRelX >= TILE_COLS_COUNT - 1) &&
-  //     NewPlayerX >= TILE_SIDE) {
-  //   GameState->Pos.TileX = ((GameState->Pos.TileX >> 8) + 1) << 8;
-  //   GameState->Pos.TileX |= (0) & 0xFF;
-  //   NewPlayerX = CenterX;
-  //   NewPlayerY = CenterY;
-  // }
+  if (NewTileY < 0) {
+    ChunkY -= 1;
+    NewTileY = TILE_ROWS_COUNT - 1;
+    NewPlayerX = CenterX;
+    NewPlayerY = CenterY;
+  }
+  if (NewTileY >= TILE_ROWS_COUNT) {
+    ChunkY += 1;
+    NewTileY = 0;
+    NewPlayerX = CenterX;
+    NewPlayerY = CenterY;
+  }
+  if (NewTileX < 0) {
+    ChunkX -= 1;
+    NewTileX = TILE_COLS_COUNT - 1;
+    NewPlayerX = CenterX;
+    NewPlayerY = CenterY;
+  }
+  if (NewTileX >= TILE_COLS_COUNT) {
+    ChunkX += 1;
+    NewTileX = 0;
+    NewPlayerX = CenterX;
+    NewPlayerY = CenterY;
+  }
+
+  if (!(ChunkX > GameState->WorldMap.TileMapCountX || ChunkX < 0 ||
+        ChunkY > GameState->WorldMap.TileMapCountY || ChunkY < 0)) {
+    GameState->Pos.TileRelX = NewPlayerX;
+    GameState->Pos.TileRelY = NewPlayerY;
+    GameState->Pos.TileX = (ChunkX << GameState->Pos.ChunckShift) |
+                           (NewTileX & GameState->Pos.ChunkMask);
+    GameState->Pos.TileY = (ChunkY << GameState->Pos.ChunckShift) |
+                           (NewTileY & GameState->Pos.ChunkMask);
+  }
 
   // // TODO: this collision detection is very bad
   // f32 Left = NewPlayerX - (f32)GameState->PlayerWidth * 0.5f;
@@ -342,8 +358,8 @@ void GameInit(Game_Memory *Memory) {
 
   if (!Memory->IsInitialised) {
 
-    GameState->WorldMap.TileMapPaddingX = 5;
-    GameState->WorldMap.TileMapPaddingY = 5;
+    GameState->WorldMap.TileMapPaddingX = 3.0f;
+    GameState->WorldMap.TileMapPaddingY = 1.5f;
     GameState->WorldMap.TileMapMinX = GameState->WorldMap.TileMapPaddingX;
     GameState->WorldMap.TileMapMinY = GameState->WorldMap.TileMapPaddingY;
     GameState->WorldMap.TileMapMaxX =
@@ -355,8 +371,8 @@ void GameInit(Game_Memory *Memory) {
 
     f32 CenterX = TILE_SIDE / 2.0f;
     f32 CenterY = TILE_SIDE / 2.0f;
-    GameState->Pos.TileX = 0;
-    GameState->Pos.TileY = 0;
+    GameState->Pos.TileX = 2;
+    GameState->Pos.TileY = 2;
     GameState->Pos.TileRelX = CenterX;
     GameState->Pos.TileRelY = CenterY;
 
@@ -388,92 +404,128 @@ extern "C" void GameUpdate(Game_Memory *Memory, Bitmap_Buffer *Buffer,
 
   if (!Memory->IsInitialised) {
     GameInit(Memory);
-    // Tile_Map TileMap0 = {{
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    //     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-    // }};
-    // Tile_Map TileMap1 = {{
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-    // }};
-    // Tile_Map TileMap2 = {{
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    // }};
-    // Tile_Map TileMap3 = {{
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1},
-    //     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-    //     {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-    // }};
 
     Tile_Map TestTileMap = {{
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0,
+         0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0},
+        {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0,
+         0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+        {0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0},
+        {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+         0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+        {0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0,
+         0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+        {0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+         1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0},
+        {0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+         0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0},
+        {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0,
+         0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+         0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0,
+         0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0},
+        {0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+         1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1},
+        {0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+         0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0},
+        {0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
+         0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+        {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+         0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0,
+         0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0,
+         0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0},
     }};
+    Tile_Map TestTileMap1 = {{
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1,
+         1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    }};
+    Tile_Map TestTileMap2 = {{
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+         1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+         0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+         1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+    }};
+
     // TODO: Game memory instead of local persist
-    local_persist Tile_Map TileMaps[1] = {};
+    local_persist Tile_Map TileMaps[4] = {};
     TileMaps[0] = TestTileMap;
+    TileMaps[1] = TestTileMap1;
+    TileMaps[2] = TestTileMap2;
+    TileMaps[3] = TestTileMap2;
 
     GameState->WorldMap.TileMaps = TileMaps;
   }

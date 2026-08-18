@@ -24,7 +24,7 @@
 #define TILE_ROWS_COUNT 18
 #define TILE_COLS_COUNT 30
 
-#define TILE_SIDE 5
+#define TILE_SIDE 1.0f
 
 #define PLAYER_SPEED 10.0f
 
@@ -99,8 +99,8 @@ struct Position {
 struct Tile_Position {
   i32 ChunkX;
   i32 ChunkY;
-  f32 ChunkRelX;
-  f32 ChunkRelY;
+  i32 ChunkRelX;
+  i32 ChunkRelY;
 };
 
 struct Raw_Position {
@@ -189,8 +189,7 @@ internal inline b32 TileMapBoundsCheckLeft(Game_State *GameState, f32 X);
 internal inline b32 TileMapBoundsCheckRight(Game_State *GameState, f32 X);
 //==========================Movement==========================================
 internal Tile_Position FromCanonPosToTilePos(Game_State *GameState);
-internal Raw_Position FromCanonPosToRawPos(Game_State *GameState,
-                                           Bitmap_Buffer *Buffer);
+internal Raw_Position FromCanonPosToRawPos(Game_State *GameState);
 internal void GameMovement(Game_State *GameState, Game_Input *GameInput);
 //==========================Sound==========================================
 extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
