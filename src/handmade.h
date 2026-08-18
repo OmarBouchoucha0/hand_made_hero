@@ -21,11 +21,10 @@
 #define GAME_RES_X 960
 #define GAME_RES_Y 540
 
-#define TILE_SIDE_PIXELS 30
-#define TILE_SIDE 1.0f
+#define TILE_ROWS_COUNT 18
+#define TILE_COLS_COUNT 30
 
-#define TILE_ROWS_COUNT 9
-#define TILE_COLS_COUNT 17
+#define TILE_SIDE 5
 
 #define PLAYER_SPEED 10.0f
 
@@ -87,16 +86,26 @@ struct World_Map {
   u32 TileMapCountY;
   Tile_Map *TileMaps;
 };
+
 struct Position {
-  // NOTE: world relative x and y
-  i32 WorldMapX;
-  i32 WorldMapY;
-  // NOTE: chunk relative x and y
-  i32 TileMapX;
-  i32 TileMapY;
-  // NOTE: tile relative x and y
-  f32 PlayerX;
-  f32 PlayerY;
+  u8 ChunckShift;
+  u32 ChunkMask;
+  i32 TileX;
+  i32 TileY;
+  f32 TileRelX;
+  f32 TileRelY;
+};
+
+struct Tile_Position {
+  i32 ChunkX;
+  i32 ChunkY;
+  f32 ChunkRelX;
+  f32 ChunkRelY;
+};
+
+struct Raw_Position {
+  i32 X;
+  i32 Y;
 };
 
 struct Game_State {
@@ -165,8 +174,7 @@ internal void DrawRectangle(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX, f32 MinY,
                             f32 MaxY, RGB Color);
 internal void DrawRectangleOutline(Bitmap_Buffer *Buffer, f32 MinX, f32 MaxX,
                                    f32 MinY, f32 MaxY, RGB Color);
-internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState,
-                          Tile_Map TileMap);
+internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState);
 internal void DrawPlayer(Game_State *GameState, Bitmap_Buffer *Buffer);
 internal void ClearScreen(Bitmap_Buffer *Buffer);
 internal void DrawScreenBorder(Bitmap_Buffer *Buffer);
@@ -175,16 +183,14 @@ internal void GameRender(Game_State *GameState, Bitmap_Buffer *Buffer);
 internal Tile_Map GetCurrentTileMap(Game_State *GameState);
 internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
                                              i32 TileY);
-internal inline b32 TileMapBoundsCheckTop(Game_State *GameState, f32 X, f32 Y);
-internal inline b32 TileMapBoundsCheckBottom(Game_State *GameState, f32 X,
-                                             f32 Y);
-internal inline b32 TileMapBoundsCheckLeft(Game_State *GameState, f32 X, f32 Y);
-internal inline b32 TileMapBoundsCheckRight(Game_State *GameState, f32 X,
-                                            f32 Y);
-internal b32 TileMapCollision(Game_State *GameState, f32 Left, f32 Right,
-                              f32 Top, f32 Bottom);
+internal inline b32 TileMapBoundsCheckTop(Game_State *GameState, f32 Y);
+internal inline b32 TileMapBoundsCheckBottom(Game_State *GameState, f32 Y);
+internal inline b32 TileMapBoundsCheckLeft(Game_State *GameState, f32 X);
+internal inline b32 TileMapBoundsCheckRight(Game_State *GameState, f32 X);
 //==========================Movement==========================================
-internal void FromCanonPositionToRaw(Game_State *GameState, f32 *X, f32 *Y);
+internal Tile_Position FromCanonPosToTilePos(Game_State *GameState);
+internal Raw_Position FromCanonPosToRawPos(Game_State *GameState,
+                                           Bitmap_Buffer *Buffer);
 internal void GameMovement(Game_State *GameState, Game_Input *GameInput);
 //==========================Sound==========================================
 extern "C" void GameSoundOutput(Game_State *GameState, Audio_State AudioState);
