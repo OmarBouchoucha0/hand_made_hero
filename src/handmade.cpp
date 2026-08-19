@@ -15,12 +15,12 @@ internal void DrawTileMap(Bitmap_Buffer *Buffer, Game_State *GameState) {
       MinY *= GameState->MetersToPixels;
       MaxX *= GameState->MetersToPixels;
       MaxY *= GameState->MetersToPixels;
-      if (GetTileMapValueUnchecked(TileMap, x, y) == 1) {
+      if (GetTileMapValueUnchecked(TileMap, x, TILE_ROWS_COUNT - 1 - y) == 1) {
         Color = 0xffffff;
       }
       Tile_Position TilePosition = FromCanonPosToTilePos(GameState);
       if (TilePosition.ChunkRelX == x &&
-          TilePosition.ChunkRelY == TILE_ROWS_COUNT - y - 1) {
+          TilePosition.ChunkRelY == TILE_ROWS_COUNT - 1 - y) {
         Color = 0xff00ff;
       }
       DrawRectangleOutline(Buffer, MinX, MaxX, MinY, MaxY, Color);
@@ -77,7 +77,7 @@ internal Tile_Position FromCanonPosToTilePos(Game_State *GameState) {
   TilePosition.ChunkX = GameState->Pos.TileX >> GameState->Pos.ChunckShift;
   TilePosition.ChunkY = GameState->Pos.TileY >> GameState->Pos.ChunckShift;
   TilePosition.ChunkRelX = GameState->Pos.TileX & GameState->Pos.ChunkMask;
-  TilePosition.ChunkRelY = GameState->Pos.TileY & GameState->Pos.ChunkMask;
+  TilePosition.ChunkRelY = (GameState->Pos.TileY & GameState->Pos.ChunkMask);
   return TilePosition;
 }
 
@@ -182,6 +182,7 @@ internal Tile_Map GetCurrentTileMap(Game_State *GameState) {
 
 internal inline u32 GetTileMapValueUnchecked(Tile_Map TileMap, i32 TileX,
                                              i32 TileY) {
+  TileY = TILE_ROWS_COUNT - 1 - TileY;
   return TileMap.Map[TileY][TileX];
 }
 
@@ -281,6 +282,40 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
     NewPlayerY = CenterY;
   }
 
+  // TODO: this collision detection is very bad
+  f32 Left = NewPlayerX - (f32)GameState->PlayerWidth * 0.5f;
+  f32 Right = NewPlayerX + (f32)GameState->PlayerWidth * 0.5f;
+  f32 Top = NewPlayerY + (f32)GameState->PlayerHeight * 0.5f;
+  f32 Bottom = NewPlayerY - (f32)GameState->PlayerHeight * 0.5f;
+
+  Tile_Map TileMap = GetCurrentTileMap(GameState);
+  if (GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
+                               TilePosition.ChunkRelY) == 0) {
+
+    if (Bottom < 0 &&
+        GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
+                                 TilePosition.ChunkRelY - 1) == 1) {
+      NewPlayerY = GameState->Pos.TileRelY;
+    }
+
+    if (Top >= TILE_SIDE &&
+        GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
+                                 TilePosition.ChunkRelY + 1) == 1) {
+      NewPlayerY = GameState->Pos.TileRelY;
+    }
+    if (Left < 0 &&
+        GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX - 1,
+                                 TilePosition.ChunkRelY) == 1) {
+      NewPlayerX = GameState->Pos.TileRelX;
+    }
+
+    if (Right >= TILE_SIDE &&
+        GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX + 1,
+                                 TilePosition.ChunkRelY) == 1) {
+      NewPlayerX = GameState->Pos.TileRelX;
+    }
+  }
+
   if (!(ChunkX > GameState->WorldMap.TileMapCountX || ChunkX < 0 ||
         ChunkY > GameState->WorldMap.TileMapCountY || ChunkY < 0)) {
     GameState->Pos.TileRelX = NewPlayerX;
@@ -290,47 +325,6 @@ internal void GameMovement(Game_State *GameState, Game_Input *GameInput) {
     GameState->Pos.TileY = (ChunkY << GameState->Pos.ChunckShift) |
                            (NewTileY & GameState->Pos.ChunkMask);
   }
-
-  // // TODO: this collision detection is very bad
-  // f32 Left = NewPlayerX - (f32)GameState->PlayerWidth * 0.5f;
-  // f32 Right = NewPlayerX + (f32)GameState->PlayerWidth * 0.5f;
-  // f32 Top = NewPlayerY + (f32)GameState->PlayerHeight * 0.5f;
-  // f32 Bottom = NewPlayerY - (f32)GameState->PlayerHeight * 0.5f;
-
-  // Tile_Map TileMap = GetCurrentTileMap(GameState);
-  // if (GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
-  //                              TilePosition.ChunkRelY) == 0) {
-  //   if (Bottom >= 0 && Top < TILE_SIDE) {
-  //     GameState->Pos.TileRelY = NewPlayerY;
-  //   }
-  //   if (Left >= 0 && Right < TILE_SIDE) {
-  //     GameState->Pos.TileRelX = NewPlayerX;
-  //   }
-  //
-  //   if (Bottom < 0 &&
-  //       GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
-  //                                TilePosition.ChunkRelY - 1) == 0) {
-  //     GameState->Pos.TileRelY = NewPlayerY;
-  //   }
-  //
-  //   if (Top >= TILE_SIDE &&
-  //       GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX,
-  //                                TilePosition.ChunkRelY + 1) == 0) {
-  //     GameState->Pos.TileRelY = NewPlayerY;
-  //   }
-  //
-  //   if (Left < 0 &&
-  //       GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX - 1,
-  //                                TilePosition.ChunkRelY) == 0) {
-  //     GameState->Pos.TileRelX = NewPlayerX;
-  //   }
-  //
-  //   if (Right >= TILE_SIDE &&
-  //       GetTileMapValueUnchecked(TileMap, TilePosition.ChunkRelX + 1,
-  //                                TilePosition.ChunkRelY) == 0) {
-  //     GameState->Pos.TileRelX = NewPlayerX;
-  //   }
-  // }
 }
 
 //==========================Sound==========================================
